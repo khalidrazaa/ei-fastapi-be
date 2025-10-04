@@ -12,7 +12,6 @@ router = APIRouter()
 async def get_keywords(req: KeywordRequest, db: AsyncSession = Depends(get_db)):
     if not req.keyword or not req.keyword.strip():
         raise HTTPException(status_code=400, detail="keyword is required")
-    
     service = KeywordService(db)
     return await service.get_keyword_data(req.keyword.strip())
 
@@ -23,3 +22,4 @@ async def scrape_trends(geo:str, hours:str, sts:str):
     data = await scraper.fetch_trending_csv_bytes(geo, hours, sts)
     # result = await save_csv_bytes_to_mongo_pandas(csv_bytes)
     return data
+
