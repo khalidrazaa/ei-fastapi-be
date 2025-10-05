@@ -18,8 +18,11 @@ async def get_keywords(req: KeywordRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/scrape")
 async def scrape_trends(geo:str, hours:str, sts:str):
     scraper = TrendsScraper()
-    print("scrape", geo, hours, sts)
-    data = await scraper.fetch_trending_csv_bytes(geo, hours, sts)
+    # data = await scraper.fetch_trending_csv_bytes(geo, hours, sts)
     # result = await save_csv_bytes_to_mongo_pandas(csv_bytes)
-    return data
+    return await scraper.fetch_trending_csv_bytes(geo, hours, sts)
 
+@router.get("/list_trends")
+async def list_trends():
+    scraper = TrendsScraper()
+    return await scraper.list_trends()
