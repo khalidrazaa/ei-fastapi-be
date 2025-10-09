@@ -217,7 +217,7 @@ class TrendsScraper:
             if gemini_bulk_ops:
                 gemini_result = await self.mongo.bulk_write(gemini_bulk_ops)
                 categorized_count = gemini_result.modified_count if gemini_result else 0
-
+        
         return {
             "processed_rows": len(df),
             "inserted_count": bulk_result.upserted_count if bulk_result else 0,
@@ -233,5 +233,11 @@ class TrendsScraper:
         limit = 100
         skip = 0
 
-        data = await find("trends", query=filters,sort=sort,limit=limit,skip=skip)
-        return data
+        data = await self.mongo.find(query=filters,sort=sort,limit=limit,skip=skip)
+
+        # Convert _id ObjectId to str to make JSON serializable
+        for doc in data:
+            if "_id" in doc:
+                doc["_id"] = str(doc["_id"])
+
+        return {"status":True, "result":data}
