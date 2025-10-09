@@ -9,6 +9,7 @@ from dateutil import parser
 from motor.motor_asyncio import AsyncIOMotorClient
 from playwright.async_api import async_playwright
 from app.db.mongodb import get_mongo_db
+from app.db.db_wrapper.mongo_wraper import MongoWrapper
 from app.db.models.trends import TrendItem
 import pandas as pd
 from pymongo import UpdateOne
@@ -16,8 +17,9 @@ from io import BytesIO
 
 class TrendsScraper:
     def __init__(self, collection_name: str = "trending_searches"):
-        self.db = get_mongo_db()
-        self.collection = self.db[collection_name]
+        db = get_mongo_db()
+        self.collection: AsyncIOMotorCollection = db[collection_name]
+        self.mongo = MongoWrapper(self.collection)
         asyncio.create_task(self._ensure_indexes()) # run async index creation
 
     async def _ensure_indexes(self):
@@ -32,10 +34,15 @@ class TrendsScraper:
         self,
         geo: str = "IN",
         hours: str = "168",
-        sts: str = "active",
+        sts: str = "",
     ) -> bytes:
         """Fetch trending CSV from Google Trends and return CSV content as bytes."""
-        url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
+
+        if sts == 'active':
+            url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
+        else:
+            url = f"https://trends.google.com/trending?geo={geo}&hours={hours}"
+
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -124,7 +131,7 @@ class TrendsScraper:
     #         return None
     #     if not isinstance(dt_str, str):  # just in case
     #         return None
-# 
+    # 
     #     # Replace non-breaking / narrow spaces
     #     dt_str = dt_str.replace("\u202f", " ").replace("\xa0", " ")
     #     try:
@@ -134,39 +141,29 @@ class TrendsScraper:
     #         return None
 
     async def save_csv_bytes_to_mongo_pandas(self, csv_bytes: bytes) -> dict:
-        """Parse CSV with Pandas, update MongoDB with volume history, growth, and Gemini categorization."""
+        """Parse CSV, upsert trends into MongoDB, calculate growth, and apply Gemini categorization."""
         ts_now = datetime.utcnow()
 
-        # Load CSV into Pandas DataFrame
+        # Load CSV into DataFrame
         df = pd.read_csv(BytesIO(csv_bytes))
         df.columns = [c.strip() for c in df.columns]
 
         # Parse search volume & datetime
         df["search_volume"] = df["Search volume"].fillna("0").apply(self.parse_search_volume)
-
-        # ✅ safer vectorized datetime parsing instead of row-wise .apply(self.parse_datetime)
         df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True)
         df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True)
-
         df["trend_breakdown"] = df["Trend breakdown"].fillna("").str.strip()
         df["explore_link"] = df["Explore link"]
 
-        # Filter out trends with zero search volume
+        # Filter zero search volume
         df = df[df["search_volume"] > 0]
-
         if df.empty:
-            return {
-                "processed_rows": 0,
-                "inserted_count": 0,
-                "matched_count": 0,
-                "modified_count": 0,
-                "categorized_count": 0,
-            }
+            return {"processed_rows": 0, "inserted_count": 0, "matched_count": 0, "modified_count": 0, "categorized_count": 0}
 
         trend_names = df["Trends"].str.strip().unique().tolist()
 
-        # Fetch existing trends from MongoDB
-        existing_docs = await self.collection.find({"trend": {"$in": trend_names}}).to_list(length=None)
+        # Fetch existing trends
+        existing_docs = await self.mongo.collection.find({"trend": {"$in": trend_names}}).to_list(length=None)
         existing_map = {doc["trend"]: doc for doc in existing_docs}
 
         bulk_ops = []
@@ -183,9 +180,7 @@ class TrendsScraper:
                 volume_history = volume_history[-20:]
 
             # Determine growth
-            is_growing = False
-            if len(volume_history) >= 2:
-                is_growing = volume_history[-1]["value"] > volume_history[-2]["value"]
+            is_growing = len(volume_history) >= 2 and volume_history[-1]["value"] > volume_history[-2]["value"]
 
             trend_doc = {
                 "trend": trend_name,
@@ -208,28 +203,21 @@ class TrendsScraper:
 
             bulk_ops.append(UpdateOne({"trend": trend_name}, {"$set": trend_doc}, upsert=True))
 
-        # Bulk write all trends
-        bulk_result = None
-        if bulk_ops:
-            bulk_result = await self.collection.bulk_write(bulk_ops, ordered=False)
+        # Bulk write trends
+        bulk_result = await self.mongo.bulk_write(bulk_ops) if bulk_ops else None
 
-        # Gemini categorization for new/uncategorized trends
+        # Gemini categorization
         categorized_count = 0
         if uncategorized_trends:
-            # Mock Gemini call for now
             gemini_results = {t: {"category": "Tech", "subcategory": "AI"} for t in uncategorized_trends}
-
-            gemini_bulk_ops = []
-            for t, cat in gemini_results.items():
-                gemini_bulk_ops.append(UpdateOne(
-                    {"trend": t},
-                    {"$set": {"category": cat["category"], "subcategory": cat["subcategory"]}}
-                ))
-
+            gemini_bulk_ops = [
+                UpdateOne({"trend": t}, {"$set": {"category": cat["category"], "subcategory": cat["subcategory"]}})
+                for t, cat in gemini_results.items()
+            ]
             if gemini_bulk_ops:
-                gemini_result = await self.collection.bulk_write(gemini_bulk_ops, ordered=False)
-                categorized_count = gemini_result.modified_count
-
+                gemini_result = await self.mongo.bulk_write(gemini_bulk_ops)
+                categorized_count = gemini_result.modified_count if gemini_result else 0
+        
         return {
             "processed_rows": len(df),
             "inserted_count": bulk_result.upserted_count if bulk_result else 0,
@@ -237,3 +225,19 @@ class TrendsScraper:
             "modified_count": bulk_result.modified_count if bulk_result else 0,
             "categorized_count": categorized_count,
         }
+
+
+    async def list_trends(self):
+        filters = {}  # optional filters later
+        sort = [("search_volume", -1)]
+        limit = 100
+        skip = 0
+
+        data = await self.mongo.find(query=filters,sort=sort,limit=limit,skip=skip)
+
+        # Convert _id ObjectId to str to make JSON serializable
+        for doc in data:
+            if "_id" in doc:
+                doc["_id"] = str(doc["_id"])
+
+        return {"status":True, "result":data}
