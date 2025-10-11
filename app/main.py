@@ -4,7 +4,6 @@ from app.api.router import router as api_router
 from app.db.session import engine
 import asyncio
 import os
-from app.db.mongodb import get_mongo_db
 
 app = FastAPI()
 
@@ -32,15 +31,6 @@ async def on_startup():
 
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
-
-    # MongoDB check
-    try:
-        mongo_db = get_mongo_db()
-        # Perform a simple command to ensure connection
-        mongo_db.command("ping")
-        print("✅ MongoDB connection successful.")
-    except Exception as e:
-        print(f"❌ MongoDB connection failed: {e}")
 
 @app.get("/")
 async def root():

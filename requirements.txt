@@ -51,6 +51,10 @@ tqdm==4.67.1
 google-search-results
 python-dateutil==2.9.0.post0
 playwright==1.55.0
+pandas=2.3.2
+google-genai
+
+pip install -q -U google-genai
 
 # --- Optional (observability/monitoring) ---
 sentry-sdk==2.33.0

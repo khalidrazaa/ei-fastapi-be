@@ -9,7 +9,7 @@ python -m migrations.generate_sql_from_models
     ## this script will generate .sql file 
 
 # Step 2: apply the migration(s) to DB
-python -m migration.migration_script
+python -m migrations.migration_script
 
 
 

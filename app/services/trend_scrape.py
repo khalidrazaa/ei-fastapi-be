@@ -1,34 +1,25 @@
-import asyncio
-import csv
 from datetime import datetime
 import tempfile
-import os
-import io
-import re
-from dateutil import parser
-from motor.motor_asyncio import AsyncIOMotorClient
-from playwright.async_api import async_playwright
-from app.db.mongodb import get_mongo_db
-from app.db.db_wrapper.mongo_wraper import MongoWrapper
-from app.db.models.trends import TrendItem
-import pandas as pd
-from pymongo import UpdateOne
 from io import BytesIO
+import os
+import re
+import pandas as pd
+from playwright.async_api import async_playwright
+from sqlalchemy import select, desc, and_, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
+from app.services.gemini_service import GeminiClient
+
+
 
 class TrendsScraper:
-    def __init__(self, collection_name: str = "trending_searches"):
-        db = get_mongo_db()
-        self.collection: AsyncIOMotorCollection = db[collection_name]
-        self.mongo = MongoWrapper(self.collection)
-        asyncio.create_task(self._ensure_indexes()) # run async index creation
-
-    async def _ensure_indexes(self):
-        await self.collection.create_index("trend", unique=True)
-        await self.collection.create_index("status")
-        await self.collection.create_index("category")
-        await self.collection.create_index("subcategory")
-        await self.collection.create_index("is_growing", 1),("category",1)
-        #await self.collection.create_index("last_updated", expireAfterSeconds=60 * 60 * 24)
+    def __init__(self, db: AsyncSession):
+        """
+        db: AsyncSession
+        gemini_client: instance of Gemini AI client with a categorize() method
+        """
+        self.db = db
+        self.gemini = GeminiClient()
 
     async def fetch_trending_csv_bytes(
         self,
@@ -37,9 +28,10 @@ class TrendsScraper:
         sts: str = "",
     ) -> bytes:
         """Fetch trending CSV from Google Trends and return CSV content as bytes."""
+        url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
 
         if sts == 'active':
-            url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
+            url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status=active"
         else:
             url = f"https://trends.google.com/trending?geo={geo}&hours={hours}"
 
@@ -92,10 +84,9 @@ class TrendsScraper:
             # Step 9: Close browser
             await browser.close()
 
-            result = await self.save_csv_bytes_to_mongo_pandas(csv_bytes)
+            result = await self.save_csv_bytes(csv_bytes)
 
         return {"result":result, "geo":geo, "hours":hours,"status":True}
-
 
     @staticmethod
     def parse_search_volume(volume_str: str) -> int:
@@ -124,120 +115,163 @@ class TrendsScraper:
         
         return int(number)
 
-    # @staticmethod
-    # def parse_datetime(dt_str: str):
-    #     """Parse datetime string, handling NaN/None safely."""
-    #     if pd.isna(dt_str):  # catches NaN/None
-    #         return None
-    #     if not isinstance(dt_str, str):  # just in case
-    #         return None
-    # 
-    #     # Replace non-breaking / narrow spaces
-    #     dt_str = dt_str.replace("\u202f", " ").replace("\xa0", " ")
-    #     try:
-    #         return parser.parse(dt_str)
-    #     except Exception as e:
-    #         print("Failed to parse datetime:", dt_str, e)
-    #         return None
-
-    async def save_csv_bytes_to_mongo_pandas(self, csv_bytes: bytes) -> dict:
-        """Parse CSV, upsert trends into MongoDB, calculate growth, and apply Gemini categorization."""
+    async def save_csv_bytes(self, csv_bytes: bytes, batch_size: int = 10) -> dict:
         ts_now = datetime.utcnow()
-
-        # Load CSV into DataFrame
         df = pd.read_csv(BytesIO(csv_bytes))
         df.columns = [c.strip() for c in df.columns]
-
-        # Parse search volume & datetime
+    
         df["search_volume"] = df["Search volume"].fillna("0").apply(self.parse_search_volume)
-        df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True)
-        df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True)
+    
+        # Suppress Pandas warnings for date parsing
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            # Try to parse dates with a common format first
+            df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True, infer_datetime_format=True)
+            df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True, infer_datetime_format=True)
+    
         df["trend_breakdown"] = df["Trend breakdown"].fillna("").str.strip()
         df["explore_link"] = df["Explore link"]
-
-        # Filter zero search volume
         df = df[df["search_volume"] > 0]
-        if df.empty:
-            return {"processed_rows": 0, "inserted_count": 0, "matched_count": 0, "modified_count": 0, "categorized_count": 0}
-
-        trend_names = df["Trends"].str.strip().unique().tolist()
-
-        # Fetch existing trends
-        existing_docs = await self.mongo.collection.find({"trend": {"$in": trend_names}}).to_list(length=None)
-        existing_map = {doc["trend"]: doc for doc in existing_docs}
-
-        bulk_ops = []
-        uncategorized_trends = []
-
+    
+        inserted_count, updated_count, categorized_count = 0, 0, 0
+        to_categorize = []
+        trend_map = {}
+    
+        # Step 1: Add/update trends in DB
         for _, row in df.iterrows():
             trend_name = row["Trends"].strip()
-            existing_doc = existing_map.get(trend_name)
-
-            # Volume history
-            volume_history = existing_doc.get("volume_history", []) if existing_doc else []
-            volume_history.append({"ts": ts_now, "value": row["search_volume"]})
-            if len(volume_history) > 20:
-                volume_history = volume_history[-20:]
-
-            # Determine growth
-            is_growing = len(volume_history) >= 2 and volume_history[-1]["value"] > volume_history[-2]["value"]
-
-            trend_doc = {
-                "trend": trend_name,
-                "search_volume": row["search_volume"],
-                "started": row["started"].to_pydatetime() if pd.notna(row["started"]) else None,
-                "ended": row["ended"].to_pydatetime() if pd.notna(row["ended"]) else None,
-                "trend_breakdown": row["trend_breakdown"],
-                "explore_link": row["explore_link"],
-                "last_updated": ts_now,
-                "volume_history": volume_history,
-                "is_growing": is_growing,
-                "category": existing_doc.get("category") if existing_doc else None,
-                "subcategory": existing_doc.get("subcategory") if existing_doc else None,
-                "draft_id": existing_doc.get("draft_id") if existing_doc else None,
-                "status": existing_doc.get("status", "Open") if existing_doc else "Open",
-            }
-
-            if not trend_doc["category"] and is_growing:
-                uncategorized_trends.append(trend_name)
-
-            bulk_ops.append(UpdateOne({"trend": trend_name}, {"$set": trend_doc}, upsert=True))
-
-        # Bulk write trends
-        bulk_result = await self.mongo.bulk_write(bulk_ops) if bulk_ops else None
-
-        # Gemini categorization
-        categorized_count = 0
-        if uncategorized_trends:
-            gemini_results = {t: {"category": "Tech", "subcategory": "AI"} for t in uncategorized_trends}
-            gemini_bulk_ops = [
-                UpdateOne({"trend": t}, {"$set": {"category": cat["category"], "subcategory": cat["subcategory"]}})
-                for t, cat in gemini_results.items()
-            ]
-            if gemini_bulk_ops:
-                gemini_result = await self.mongo.bulk_write(gemini_bulk_ops)
-                categorized_count = gemini_result.modified_count if gemini_result else 0
-        
+            stmt = select(TrendItem).where(TrendItem.trend == trend_name)
+            result = await self.db.execute(stmt)
+            trend = result.scalar_one_or_none()
+    
+            if trend:
+                trend.volume_history.append(VolumePoint(ts=ts_now, value=row["search_volume"]))
+                if len(trend.volume_history) > 20:
+                    trend.volume_history = trend.volume_history[-20:]
+                trend.is_growing = len(trend.volume_history) >= 2 and \
+                                   trend.volume_history[-1].value > trend.volume_history[-2].value
+                updated_count += 1
+            else:
+                trend = TrendItem(
+                    trend=trend_name,
+                    search_volume=row["search_volume"],
+                    started=row["started"].to_pydatetime() if pd.notna(row["started"]) else None,
+                    ended=row["ended"].to_pydatetime() if pd.notna(row["ended"]) else None,
+                    trend_breakdown=row["trend_breakdown"],
+                    explore_link=row["explore_link"],
+                    is_growing=False,
+                    volume_history=[VolumePoint(ts=ts_now, value=row["search_volume"])],
+                    status=TrendStatus.open,
+                )
+                self.db.add(trend)
+                inserted_count += 1
+    
+            if not trend.category:
+                to_categorize.append((trend_name, row["trend_breakdown"]))
+            trend_map[trend_name] = trend
+    
+        # Step 2: Batch categorize uncategorized trends
+        if to_categorize:
+            trends, breakdowns = zip(*to_categorize)
+            gemini_results = await self.gemini.categorize_batch(list(trends), list(breakdowns))
+            for trend_name, cat_dict in zip(trends, gemini_results):
+                trend = trend_map[trend_name]
+                trend.category = cat_dict.get("category")
+                trend.subcategory = cat_dict.get("subcategory")
+                categorized_count += 1
+    
+        await self.db.commit()
+    
         return {
             "processed_rows": len(df),
-            "inserted_count": bulk_result.upserted_count if bulk_result else 0,
-            "matched_count": bulk_result.matched_count if bulk_result else 0,
-            "modified_count": bulk_result.modified_count if bulk_result else 0,
+            "inserted_count": inserted_count,
+            "updated_count": updated_count,
             "categorized_count": categorized_count,
         }
 
+    async def list_trends(
+        self,
+        category: str | None = None,
+        subcategory: str | None = None,
+        is_growing: bool | None = None,
+        ongoing: bool | None = None,  # True = not ended, False = ended
+        min_volume: int | None = None,
+        search: str | None = None,
+        limit: int = 100,
+        skip: int = 0,
+        sort_by: str = "search_volume",
+        sort_dir: str = "desc",
+    ):
+        """
+        Fetch and filter trends from PostgreSQL.
+        Filters:
+        - category, subcategory
+        - is_growing (bool)
+        - ongoing (bool): True = not ended yet
+        - min_volume (int)
+        - search (partial text match)
+        - pagination: limit/skip
+        """
 
-    async def list_trends(self):
-        filters = {}  # optional filters later
-        sort = [("search_volume", -1)]
-        limit = 100
-        skip = 0
+        stmt = select(TrendItem)
 
-        data = await self.mongo.find(query=filters,sort=sort,limit=limit,skip=skip)
+        conditions = []
 
-        # Convert _id ObjectId to str to make JSON serializable
-        for doc in data:
-            if "_id" in doc:
-                doc["_id"] = str(doc["_id"])
+        # Apply filters dynamically
+        if category:
+            conditions.append(TrendItem.category.ilike(f"%{category}%"))
+        if subcategory:
+            conditions.append(TrendItem.subcategory.ilike(f"%{subcategory}%"))
+        if is_growing is not None:
+            conditions.append(TrendItem.is_growing == is_growing)
+        if min_volume is not None:
+            conditions.append(TrendItem.search_volume >= min_volume)
+        if ongoing is not None:
+            # ongoing=True => ended is NULL or ended > now
+            now = datetime.utcnow()
+            if ongoing:
+                conditions.append(or_(TrendItem.ended.is_(None), TrendItem.ended > now))
+            else:
+                conditions.append(and_(TrendItem.ended.is_not(None), TrendItem.ended <= now))
+        if search:
+            conditions.append(TrendItem.trend.ilike(f"%{search}%"))
 
-        return {"status":True, "result":data}
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        # Sorting
+        if sort_dir.lower() == "desc":
+            stmt = stmt.order_by(desc(getattr(TrendItem, sort_by)))
+        else:
+            stmt = stmt.order_by(getattr(TrendItem, sort_by))
+
+        # Pagination
+        stmt = stmt.offset(skip).limit(limit)
+
+        # Execute
+        result = await self.db.execute(stmt)
+        trends = result.scalars().all()
+
+        # Serialize
+        serialized = []
+        for t in trends:
+            serialized.append({
+                "id": str(t.id),
+                "trend": t.trend,
+                "search_volume": t.search_volume,
+                "started": t.started.isoformat() if t.started else None,
+                "ended": t.ended.isoformat() if t.ended else None,
+                "trend_breakdown": t.trend_breakdown,
+                "explore_link": t.explore_link,
+                "is_growing": t.is_growing,
+                "category": t.category,
+                "subcategory": t.subcategory,
+                "status": t.status.value if hasattr(t.status, "value") else t.status,
+                "last_updated": t.last_updated.isoformat() if t.last_updated else None,
+            })
+
+        return {
+            "status": True,
+            "count": len(serialized),
+            "result": serialized,
+        }
