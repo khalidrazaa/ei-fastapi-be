@@ -22,6 +22,10 @@ async def list_trends(
     subcategory: str | None = None,
     status: str | None = None,
     is_growing: bool | None = None,
+    ongoing: bool | None = None,
+    min_volume: int | None = None,
+    sort_by: str = "search_volume",
+    sort_dir: str = "desc",
     limit: int = 100,
     offset: int = 0,
 ):
@@ -32,8 +36,12 @@ async def list_trends(
         subcategory=subcategory,
         status=status,
         is_growing=is_growing,
+        ongoing=ongoing,
+        min_volume=min_volume,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
 
 

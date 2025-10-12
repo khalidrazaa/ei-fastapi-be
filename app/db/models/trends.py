@@ -20,9 +20,9 @@ from app.db.session import Base
 
 
 class TrendStatus(str, enum.Enum):
-    open = "Open"
-    processed = "Processed"
-    ignored = "Ignored"
+    Open = "Open"
+    Processed = "Processed"
+    Ignored = "Ignored"
 
 
 class TrendItem(Base):
@@ -45,7 +45,7 @@ class TrendItem(Base):
     category = Column(String(100))
     subcategory = Column(String(100))
 
-    status = Column(Enum(TrendStatus), default=TrendStatus.open)
+    status = Column(Enum(TrendStatus), default=TrendStatus.Open)
     draft_id = Column(String(255))
 
     last_updated = Column(DateTime(timezone=True), default=datetime.utcnow)
