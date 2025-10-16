@@ -7,6 +7,7 @@ import pandas as pd
 from playwright.async_api import async_playwright
 from sqlalchemy import select, desc, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
 from app.services.gemini_service import GeminiClient
 import warnings
@@ -124,31 +125,38 @@ class TrendsScraper:
 
     async def save_csv_bytes(self, csv_bytes: bytes, batch_size: int = 10) -> dict:
         try:
-            print(f"called function to save csv bytes")
+            print("called function to save csv bytes")
             ts_now = datetime.utcnow()
+
+            # ✅ initialize counters at the top so they exist even if error happens early
+            inserted_count = 0
+            updated_count = 0
+            categorized_count = 0
+
             df = pd.read_csv(BytesIO(csv_bytes))
             df.columns = [c.strip() for c in df.columns]
 
             df["search_volume"] = df["Search volume"].fillna("0").apply(self.parse_search_volume)
 
-            # Suppress Pandas warnings for date parsing
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
-                # Try to parse dates with a common format first
-                df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True, infer_datetime_format=True)
-                df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True, infer_datetime_format=True)
+                df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True)
+                df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True)
 
             df["trend_breakdown"] = df["Trend breakdown"].fillna("").str.strip()
             df["explore_link"] = df["Explore link"]
             df = df[df["search_volume"] > 0]
 
-            inserted_count, updated_count, categorized_count = 0, 0, 0
+            processed_rows = len(df)
+
+            print("total rows to process:",processed_rows)  # 
+
             to_categorize = []
             trend_map = {}
 
             print(f"adding in iteration {len(df)}")
 
-            # Step 1: Add/update trends in DB
+            # Step 1: Add/update trends
             for _, row in df.iterrows():
                 trend_name = row["Trends"].strip()
                 stmt = select(TrendItem).where(TrendItem.trend == trend_name)
@@ -156,11 +164,7 @@ class TrendsScraper:
                 trend = result.scalar_one_or_none()
 
                 if trend:
-                    trend.volume_history.append(VolumePoint(ts=ts_now, value=row["search_volume"]))
-                    if len(trend.volume_history) > 20:
-                        trend.volume_history = trend.volume_history[-20:]
-                    trend.is_growing = len(trend.volume_history) >= 2 and \
-                                       trend.volume_history[-1].value > trend.volume_history[-2].value
+                    trend.search_volume = row["search_volume"]  # update current volume
                     updated_count += 1
                 else:
                     trend = TrendItem(
@@ -171,41 +175,63 @@ class TrendsScraper:
                         trend_breakdown=row["trend_breakdown"],
                         explore_link=row["explore_link"],
                         is_growing=False,
-                        volume_history=[VolumePoint(ts=ts_now, value=row["search_volume"])],
                         status=TrendStatus.Open,
                     )
                     self.db.add(trend)
-                    await self.db.flush()  # get trend.id
+                    await self.db.flush()  # assign trend.id
                     inserted_count += 1
 
-                if not trend.category:
-                    to_categorize.append((trend_name, row["trend_breakdown"]))
                 trend_map[trend_name] = trend
-            
-            print(f"batching categorize function")
 
-            # Step 2: Batch categorize uncategorized trends
-            if to_categorize:
-                trends, breakdowns = zip(*to_categorize)
-                gemini_results = await self.gemini.categorize_batch(list(trends), list(breakdowns))
-                for trend_name, cat_dict in zip(trends, gemini_results):
-                    trend = trend_map[trend_name]
+            # Commit trends first before inserting volume points
+            await self.db.commit()
+
+            # Step 2: Insert or update volume_points with upsert
+            print("Inserting volume points (upsert)...")
+            volume_rows = []
+            for trend in trend_map.values():
+                volume_rows.append({
+                    "trend_id": trend.id,
+                    "ts": ts_now,
+                    "value": trend.search_volume,
+                })
+
+            if volume_rows:
+                stmt = insert(VolumePoint).values(volume_rows)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["trend_id", "ts"],
+                    set_={"value": stmt.excluded.value}
+                )
+                await self.db.execute(stmt)
+                await self.db.commit()
+
+            print("batching categorize function")
+
+            # Step 3: Categorize uncategorized trends
+            uncategorized = [t for t in trend_map.values() if not t.category]
+            if uncategorized:
+                trends = [t.trend for t in uncategorized]
+                breakdowns = [t.trend_breakdown for t in uncategorized]
+
+                gemini_results = await self.gemini.categorize_batch(trends, breakdowns)
+                for trend, cat_dict in zip(uncategorized, gemini_results):
                     trend.category = cat_dict.get("category")
                     trend.subcategory = cat_dict.get("subcategory")
                     categorized_count += 1
 
-            await self.db.commit()
+                await self.db.commit()
 
-            print(f"saved to db")
+            print("saved to db")
 
             return {
-                "processed_rows": len(df),
+                "processed_rows": processed_rows,
                 "inserted_count": inserted_count,
                 "updated_count": updated_count,
                 "categorized_count": categorized_count,
             }
 
         except Exception as e:
+            await self.db.rollback()
             print(f"Error saving CSV bytes: {e}")
             return {"status": False, "error": str(e)}
 
