@@ -1,6 +1,6 @@
 import os
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.schema import CreateTable
+from sqlalchemy.schema import CreateTable, CreateColumn
 from dotenv import load_dotenv
 
 from app.db.session import Base
@@ -9,6 +9,7 @@ import app.db.models.email_otp
 import app.db.models.token
 import app.db.models.keyword
 import app.db.models.article
+import app.db.models.trends
 
 
 load_dotenv()
@@ -44,7 +45,7 @@ for table in Base.metadata.sorted_tables:
         existing_cols = {col['name'] for col in inspector.get_columns(table_name)}
         for col in table.columns:
             if col.name not in existing_cols:
-                statements.append(f"ALTER TABLE {table_name} ADD COLUMN {CreateTable(col).compile(engine)};")
+                statements.append(f"ALTER TABLE {table_name} ADD COLUMN {CreateColumn(col).compile(engine)};")
     else:
         # Table does not exist → full CREATE TABLE
         statements.append(str(CreateTable(table).compile(engine)) + ";")
