@@ -31,7 +31,11 @@ class KeywordService:
 
     # --- Fetch methods ---
     async def fetch_google_autocomplete(self, keyword: str) -> List[str]:
-        params = {"engine": "google_autocomplete", "q": keyword, "api_key": SERP_API_KEY}
+        params = {
+            "engine": "google_autocomplete",
+            "q": keyword,
+            "api_key": SERP_API_KEY,
+        }
         data = self._search(params)
         suggestions = []
 
@@ -91,7 +95,7 @@ class KeywordService:
         data = self._search(params)
 
         print("google_new-data", data)
-        headlines= []
+        headlines = []
         for item in data.get("news_results", []):
             if isinstance(item, dict) and "title" in item:
                 headlines.append(item["title"])
@@ -105,7 +109,9 @@ class KeywordService:
         result = self.db.execute(stmt)
         return result.scalars().first()
 
-    async def _db_create_keyword(self, keyword: str, source: str, suggestions: List[Dict[str, str]]) -> Keyword:
+    async def _db_create_keyword(
+        self, keyword: str, source: str, suggestions: List[Dict[str, str]]
+    ) -> Keyword:
         obj = Keyword(
             keyword=keyword,
             source=source,
@@ -129,7 +135,9 @@ class KeywordService:
         if db_keyword:
             saved = db_keyword.suggestions or []
             suggestions = [
-                KeywordSuggestion(suggestion=item.get("suggestion"), source=item.get("source", ""))
+                KeywordSuggestion(
+                    suggestion=item.get("suggestion"), source=item.get("source", "")
+                )
                 for item in saved
             ]
             return KeywordResponse(
@@ -149,7 +157,7 @@ class KeywordService:
         suggestions_list: List[Dict[str, str]] = []
 
         def add_suggestions(items: List[str], src: str):
-            for s in (items or []):
+            for s in items or []:
                 key = (s or "").strip().lower()
                 if key and key not in seen:
                     seen.add(key)
@@ -167,12 +175,12 @@ class KeywordService:
         resp_suggestions = [item["suggestion"] for item in suggestions_list]
 
         return {
-        "status": "success",
-        "keyword": keyword,
-        "suggestions": resp_suggestions,
-        "monthly_searches": created.monthly_searches,
-        "cpc": created.cpc,
-        "seo_difficulty": created.seo_difficulty,
+            "status": "success",
+            "keyword": keyword,
+            "suggestions": resp_suggestions,
+            "monthly_searches": created.monthly_searches,
+            "cpc": created.cpc,
+            "seo_difficulty": created.seo_difficulty,
         }
 
     async def _gather_sources(self, keyword: str):
@@ -185,6 +193,3 @@ class KeywordService:
             self.fetch_news(keyword),
         ]
         return await asyncio.gather(*tasks, return_exceptions=False)
-
-    
-    

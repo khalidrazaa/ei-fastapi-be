@@ -9,8 +9,10 @@ from app.utils.email import send_email_otp
 from fastapi import HTTPException
 import random
 
+
 def generate_otp() -> str:
     return str(random.randint(100000, 999999))
+
 
 async def send_otp_service(email: str, db: AsyncSession):
     result = await db.execute(select(AdminUser).where(AdminUser.email == email))
@@ -31,17 +33,18 @@ async def send_otp_service(email: str, db: AsyncSession):
     else:
         new_otp = EmailOTP(email=email, otp=otp, expires_at=expires_at)
         db.add(new_otp)
-        
+
     try:
         await send_email_otp(email, otp)
     except Exception as e:
-        await db.rollback() # rollback DB changes if sending fails
+        await db.rollback()  # rollback DB changes if sending fails
         print(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
     await db.commit()
-    #await send_email_otp(email, otp)
-    return {"status":True, "message": f"OTP sent to {email}"}
+    # await send_email_otp(email, otp)
+    return {"status": True, "message": f"OTP sent to {email}"}
+
 
 async def verify_otp_service(email: str, otp: str, db: AsyncSession):
     result = await db.execute(select(EmailOTP).where(EmailOTP.email == email))
@@ -49,7 +52,7 @@ async def verify_otp_service(email: str, otp: str, db: AsyncSession):
 
     if not otp_record or otp_record.otp != otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
-    
+
     if otp_record.expires_at < datetime.utcnow():
         raise HTTPException(status_code=401, detail="OTP expired")
 

@@ -7,28 +7,33 @@ from app.utils.cookies import clear_access_cookie
 
 router = APIRouter()
 
+
 @router.post("/send-otp")
 async def send_otp(payload: OTPRequest, db: AsyncSession = Depends(get_db)):
     return await send_otp_service(payload.email, db)
 
+
 @router.post("/verify-otp", response_model=LoginResponse)
-async def verify_otp(payload: OTPVerifyRequest,response: Response, db: AsyncSession = Depends(get_db)):
+async def verify_otp(
+    payload: OTPVerifyRequest, response: Response, db: AsyncSession = Depends(get_db)
+):
     result = await verify_otp_service(payload.email, payload.otp, db)
-    
+
     response.set_cookie(
-        key = "access_token",
-        value = result["access_token"],
-        httponly = True,
-        secure = True,
-        samesite = "lax",
-        max_age = 60 * 60 * 24
+        key="access_token",
+        value=result["access_token"],
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24,
     )
 
     return {
         "status": True,
         "token_type": "bearer",
-        "message": "OTP verified successfully"
+        "message": "OTP verified successfully",
     }
+
 
 @router.post("/logout")
 async def logout(response: Response):

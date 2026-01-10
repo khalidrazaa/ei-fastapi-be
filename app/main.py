@@ -13,7 +13,7 @@ allow_origins = [o.strip() for o in origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,        # or ["*"] for all
+    allow_origins=allow_origins,  # or ["*"] for all
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,10 +21,11 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/v1/api")
 
+
 @app.on_event("startup")
 async def on_startup():
     try:
-        #test DB connection
+        # test DB connection
         async with engine.connect() as conn:
             await conn.run_sync(lambda conn: None)
         print("✅ Database connection successful.")
@@ -32,10 +33,13 @@ async def on_startup():
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
 
+
 @app.get("/")
 async def root():
-    return { "message": "ExplainIt.Tech up and Running" }
+    return {"message": "ExplainIt.Tech up and Running"}
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -42,10 +42,12 @@ for table in Base.metadata.sorted_tables:
     table_name = table.name
     if table_name in inspector.get_table_names():
         # Table exists → check for new columns
-        existing_cols = {col['name'] for col in inspector.get_columns(table_name)}
+        existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
         for col in table.columns:
             if col.name not in existing_cols:
-                statements.append(f"ALTER TABLE {table_name} ADD COLUMN {CreateColumn(col).compile(engine)};")
+                statements.append(
+                    f"ALTER TABLE {table_name} ADD COLUMN {CreateColumn(col).compile(engine)};"
+                )
     else:
         # Table does not exist → full CREATE TABLE
         statements.append(str(CreateTable(table).compile(engine)) + ";")

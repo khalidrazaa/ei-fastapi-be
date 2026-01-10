@@ -2,12 +2,15 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 from datetime import datetime
 
+
 class KeywordSuggestion(BaseModel):
     suggestion: str
     source: str
 
+
 class KeywordRequest(BaseModel):
     keyword: str
+
 
 # General DB create/read models (keep for CRUD endpoints if you use them)
 class KeywordBase(BaseModel):
@@ -18,8 +21,10 @@ class KeywordBase(BaseModel):
     seo_difficulty: Optional[float] = None
     suggestions: Optional[List[Dict[str, str]]] = Field(default_factory=list)
 
+
 class KeywordCreate(KeywordBase):
     pass
+
 
 class KeywordRead(KeywordBase):
     id: int

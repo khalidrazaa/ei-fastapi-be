@@ -13,7 +13,6 @@ from app.services.gemini_service import GeminiClient
 import warnings
 
 
-
 class TrendsScraper:
     def __init__(self, db: AsyncSession):
         """
@@ -32,12 +31,12 @@ class TrendsScraper:
         try:
             """Fetch trending CSV from Google Trends and return CSV content as bytes."""
             url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
-    
-            if sts == 'active':
+
+            if sts == "active":
                 url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status=active"
             else:
                 url = f"https://trends.google.com/trending?geo={geo}&hours={hours}"
-    
+
             print(f"Fetching trends from URL: {url}")
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
@@ -45,40 +44,42 @@ class TrendsScraper:
                     args=["--no-sandbox"],
                 )
                 page = await browser.new_page(viewport={"width": 1280, "height": 720})
-    
+
                 # Step 1: Load page
                 await page.goto(url, timeout=30000, wait_until="networkidle")
                 await page.wait_for_timeout(2000)  # ensure JS renders
-    
+
                 # Step 2: Click Export button
                 export_button = page.locator(
                     'span[jsname="V67aGc"].FOBRw-vQzf8d >> text=Export'
                 )
                 await export_button.wait_for(state="visible", timeout=15000)
                 await export_button.click()
-    
+
                 # Step 3: Wait for dropdown menu to appear
                 await page.wait_for_timeout(1000)
-    
+
                 # Step 4: Locate "Download CSV" relative to Export button
                 download_button = export_button.locator(
                     'xpath=following::span[contains(text(), "Download CSV")]'
                 ).first
                 await download_button.wait_for(state="visible", timeout=10000)
                 print(f"downloaded csv")
-    
+
                 # Step 5: Trigger download and save to temp file
                 async with page.expect_download() as download_info:
                     await download_button.click(force=True)
-    
+
                 download = await download_info.value
 
                 print(f"csv in temp file")
                 # Step 6: Save to temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=".csv"
+                ) as tmp_file:
                     tmp_path = tmp_file.name
                 await download.save_as(tmp_path)
-    
+
                 # Step 7: Read bytes from temp file
                 with open(tmp_path, "rb") as f:
                     csv_bytes = f.read()
@@ -86,15 +87,15 @@ class TrendsScraper:
                 print(f"bytes read from temp file")
                 # Step 8: Delete temp file
                 os.remove(tmp_path)
-    
+
                 # Step 9: Close browser
                 await browser.close()
                 print(f"calling function to save csv bytes")
                 result = await self.save_csv_bytes(csv_bytes)
-            return {"result":result, "geo":geo, "hours":hours,"status":True}
+            return {"result": result, "geo": geo, "hours": hours, "status": True}
 
         except Exception as e:
-            return {"status": False, "error": str(e), "geo":geo, "hours":hours}
+            return {"status": False, "error": str(e), "geo": geo, "hours": hours}
 
     @staticmethod
     def parse_search_volume(volume_str: str) -> int:
@@ -104,23 +105,23 @@ class TrendsScraper:
         """
         if not volume_str:
             return 0
-        
+
         # Remove +, whitespace, commas
         volume_str = volume_str.strip().replace("+", "").replace(",", "")
-        
+
         # Regex to capture numbers with optional K/M suffix
         match = re.match(r"^(\d*\.?\d+)([KMkm]?)$", volume_str)
         if not match:
             return 0
-        
+
         number, suffix = match.groups()
         number = float(number)
-        
+
         if suffix.upper() == "K":
             number *= 1_000
         elif suffix.upper() == "M":
             number *= 1_000_000
-        
+
         return int(number)
 
     async def save_csv_bytes(self, csv_bytes: bytes, batch_size: int = 10) -> dict:
@@ -136,7 +137,9 @@ class TrendsScraper:
             df = pd.read_csv(BytesIO(csv_bytes))
             df.columns = [c.strip() for c in df.columns]
 
-            df["search_volume"] = df["Search volume"].fillna("0").apply(self.parse_search_volume)
+            df["search_volume"] = (
+                df["Search volume"].fillna("0").apply(self.parse_search_volume)
+            )
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
@@ -149,7 +152,7 @@ class TrendsScraper:
 
             processed_rows = len(df)
 
-            print("total rows to process:",processed_rows)  # 
+            print("total rows to process:", processed_rows)  #
 
             to_categorize = []
             trend_map = {}
@@ -170,8 +173,12 @@ class TrendsScraper:
                     trend = TrendItem(
                         trend=trend_name,
                         search_volume=row["search_volume"],
-                        started=row["started"].to_pydatetime() if pd.notna(row["started"]) else None,
-                        ended=row["ended"].to_pydatetime() if pd.notna(row["ended"]) else None,
+                        started=row["started"].to_pydatetime()
+                        if pd.notna(row["started"])
+                        else None,
+                        ended=row["ended"].to_pydatetime()
+                        if pd.notna(row["ended"])
+                        else None,
                         trend_breakdown=row["trend_breakdown"],
                         explore_link=row["explore_link"],
                         is_growing=False,
@@ -190,17 +197,19 @@ class TrendsScraper:
             print("Inserting volume points (upsert)...")
             volume_rows = []
             for trend in trend_map.values():
-                volume_rows.append({
-                    "trend_id": trend.id,
-                    "ts": ts_now,
-                    "value": trend.search_volume,
-                })
+                volume_rows.append(
+                    {
+                        "trend_id": trend.id,
+                        "ts": ts_now,
+                        "value": trend.search_volume,
+                    }
+                )
 
             if volume_rows:
                 stmt = insert(VolumePoint).values(volume_rows)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["trend_id", "ts"],
-                    set_={"value": stmt.excluded.value}
+                    set_={"value": stmt.excluded.value},
                 )
                 await self.db.execute(stmt)
                 await self.db.commit()
@@ -278,9 +287,13 @@ class TrendsScraper:
                 # ongoing=True => ended is NULL or ended > now
                 now = datetime.utcnow()
                 if ongoing:
-                    conditions.append(or_(TrendItem.ended.is_(None), TrendItem.ended > now))
+                    conditions.append(
+                        or_(TrendItem.ended.is_(None), TrendItem.ended > now)
+                    )
                 else:
-                    conditions.append(and_(TrendItem.ended.is_not(None), TrendItem.ended <= now))
+                    conditions.append(
+                        and_(TrendItem.ended.is_not(None), TrendItem.ended <= now)
+                    )
             if search:
                 conditions.append(TrendItem.trend.ilike(f"%{search}%"))
 
@@ -303,20 +316,26 @@ class TrendsScraper:
             # Serialize
             serialized = []
             for t in trends:
-                serialized.append({
-                    "id": str(t.id),
-                    "trend": t.trend,
-                    "search_volume": t.search_volume,
-                    "started": t.started.isoformat() if t.started else None,
-                    "ended": t.ended.isoformat() if t.ended else None,
-                    "trend_breakdown": t.trend_breakdown,
-                    "explore_link": t.explore_link,
-                    "is_growing": t.is_growing,
-                    "category": t.category,
-                    "subcategory": t.subcategory,
-                    "status": t.status.value if hasattr(t.status, "value") else t.status,
-                    "last_updated": t.last_updated.isoformat() if t.last_updated else None,
-                })
+                serialized.append(
+                    {
+                        "id": str(t.id),
+                        "trend": t.trend,
+                        "search_volume": t.search_volume,
+                        "started": t.started.isoformat() if t.started else None,
+                        "ended": t.ended.isoformat() if t.ended else None,
+                        "trend_breakdown": t.trend_breakdown,
+                        "explore_link": t.explore_link,
+                        "is_growing": t.is_growing,
+                        "category": t.category,
+                        "subcategory": t.subcategory,
+                        "status": t.status.value
+                        if hasattr(t.status, "value")
+                        else t.status,
+                        "last_updated": t.last_updated.isoformat()
+                        if t.last_updated
+                        else None,
+                    }
+                )
 
             return {
                 "status": True,

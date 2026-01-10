@@ -1,4 +1,7 @@
 # explainit.tech-fastapi
+# run the app 
+uv run uvicorn app.main:app --reload
+
 fastapi backend for explaintit.tech
 
 Run Migration scripts

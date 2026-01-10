@@ -1,14 +1,14 @@
-
 from sqlalchemy import Column, Integer, String, Text, DateTime, ARRAY
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
 from app.db.session import Base
 
+
 class Article(Base):
     __tablename__ = "articles"
 
     id = Column(Integer, primary_key=True, index=True)
-    
+
     # Main identifiers
     title = Column(String, nullable=False)
     seo_title = Column(String, nullable=True)
@@ -20,7 +20,7 @@ class Article(Base):
     tags = Column(ARRAY(String), nullable=True)
 
     # Status + timeline
-    status = Column(String, default="draft")   # draft | published
+    status = Column(String, default="draft")  # draft | published
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     published_at = Column(DateTime(timezone=True), nullable=True)
@@ -29,7 +29,7 @@ class Article(Base):
     author_id = Column(Integer, nullable=True)
 
     # Content
-    content = Column(Text, nullable=True)   # HTML / Markdown
+    content = Column(Text, nullable=True)  # HTML / Markdown
     excerpt = Column(Text, nullable=True)
     reading_time = Column(Integer, nullable=True)
 

@@ -7,12 +7,16 @@ from app.services.trend_scrape import TrendsScraper
 
 router = APIRouter()
 
+
 @router.post("/scrape")
-async def scrape_trends(geo:str, hours:str, sts:str, db: AsyncSession = Depends(get_db)):
+async def scrape_trends(
+    geo: str, hours: str, sts: str, db: AsyncSession = Depends(get_db)
+):
     scraper = TrendsScraper(db=db)
     # data = await scraper.fetch_trending_csv_bytes(geo, hours, sts)
     # result = await save_csv_bytes_to_mongo_pandas(csv_bytes)
     return await scraper.fetch_trending_csv_bytes(geo, hours, sts)
+
 
 @router.get("/list_trends")
 async def list_trends(

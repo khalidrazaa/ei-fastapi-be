@@ -4,8 +4,12 @@ from datetime import date
 
 GenderStr = Annotated[
     str,
-    Field(pattern="^(male|female|other)$", description="Allowed values: male, female, other")
+    Field(
+        pattern="^(male|female|other)$",
+        description="Allowed values: male, female, other",
+    ),
 ]
+
 
 class AdminUserCreate(BaseModel):
     email: EmailStr

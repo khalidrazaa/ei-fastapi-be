@@ -29,6 +29,7 @@ class TrendItem(Base):
     """
     One trend keyword/topic (like 'ChatGPT', 'Cricket World Cup', etc.)
     """
+
     __tablename__ = "trend_items"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -55,7 +56,7 @@ class TrendItem(Base):
         "VolumePoint",
         back_populates="trend_item",
         cascade="all, delete-orphan",
-        lazy="selectin",   # Efficient async loading
+        lazy="selectin",  # Efficient async loading
     )
 
 
@@ -63,15 +64,16 @@ class VolumePoint(Base):
     """
     Individual (timestamp, value) record for trend's search volume.
     """
+
     __tablename__ = "volume_points"
 
     id = Column(Integer, primary_key=True, index=True)
-    trend_id = Column(Integer, ForeignKey("trend_items.id", ondelete="CASCADE"), nullable=False)
+    trend_id = Column(
+        Integer, ForeignKey("trend_items.id", ondelete="CASCADE"), nullable=False
+    )
     ts = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     value = Column(Integer, nullable=False)
 
     trend_item = relationship("TrendItem", back_populates="volume_history")
 
-    __table_args__ = (
-        UniqueConstraint("trend_id", "ts", name="uq_trend_volume_ts"),
-    )
+    __table_args__ = (UniqueConstraint("trend_id", "ts", name="uq_trend_volume_ts"),)

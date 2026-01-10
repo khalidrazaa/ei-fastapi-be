@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Convert DATABASE_URL for async usage with asyncpg
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace("postgresql://", "postgresql+asyncpg://")
+DATABASE_URL = os.getenv("DATABASE_URL", "").replace(
+    "postgresql://", "postgresql+asyncpg://"
+)
 
 # Create the async engine
 engine = create_async_engine(
@@ -23,11 +25,15 @@ engine = create_async_engine(
 )
 
 # Create the session factory
-SessionLocal = async_sessionmaker(bind=engine, autoflush = False, expire_on_commit=False, class_=AsyncSession)
+SessionLocal = async_sessionmaker(
+    bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession
+)
+
 
 # Base class for models
 class Base(DeclarativeBase):
     pass
+
 
 # Dependency for FastAPI routes
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

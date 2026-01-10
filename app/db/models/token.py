@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime
 from app.db.session import Base
 from datetime import datetime
 
+
 class Token(Base):
     __tablename__ = "tokens"
 

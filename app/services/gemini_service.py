@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class GeminiClient:
     def __init__(self):
         # Uses GEMINI_API_KEY from environment
@@ -25,18 +26,20 @@ class GeminiClient:
         ]
         for trend, breakdown in zip(trends, trend_breakdowns):
             prompt_lines.append(f"Trend: {trend}\nContext: {breakdown}")
-        
+
         prompt = "\n\n".join(prompt_lines)
 
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
+            model="gemini-2.5-flash", contents=prompt
         )
 
         try:
             categories = json.loads(response.text.strip())
             # Ensure order matches input trends
-            results = [{"category": c.get("category"), "subcategory": c.get("subcategory")} for c in categories]
+            results = [
+                {"category": c.get("category"), "subcategory": c.get("subcategory")}
+                for c in categories
+            ]
             return results
         except Exception:
             # Fallback: return None for all trends
