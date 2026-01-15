@@ -109,6 +109,7 @@ dependencies = [
     "watchfiles==1.1.0",
     "wcwidth==0.2.14",
     "websockets==15.0.1",
+    "gunicorn"
 ]
 
 [tool.ruff]
