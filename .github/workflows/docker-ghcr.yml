@@ -1,4 +1,4 @@
-name: Build & Push Docker Image
+name: Build & Push Docker Image (Bootstrap)
 
 on:
   push:
@@ -16,10 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set image name
-        run: |
-          echo "IMAGE=ghcr.io/khalidrazaa/explainit.tech-fastapi" >> $GITHUB_ENV
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -30,17 +26,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push Docker Image
-        uses: docker/build-push-action@v5
+      - name: Build & Push (bootstrap)
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ghcr.io/khalidrazaa/explainit.tech-fastapi:bootstrap
