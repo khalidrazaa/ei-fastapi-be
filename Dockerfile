@@ -48,8 +48,6 @@ COPY --from=builder /root/.local /root/.local
 RUN playwright install chromium --with-deps
 
 COPY . .
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 EXPOSE 10000
 
