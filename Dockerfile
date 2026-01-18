@@ -52,4 +52,5 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 10000
-CMD ["/entrypoint.sh"]
+
+CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS:-4} --bind 0.0.0.0:${PORT}"]
