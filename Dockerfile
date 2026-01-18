@@ -30,7 +30,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/root/.local/bin:$PATH"
-ENV PORT=10000
+
 
 WORKDIR /app
 
@@ -50,6 +50,12 @@ RUN playwright install chromium --with-deps
 
 COPY . .
 
-EXPOSE 10000
+EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS:-4} --bind 0.0.0.0:${PORT}"]
+CMD ["sh", "-c", "gunicorn app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  -w ${WORKERS:-2} \
+  --bind 0.0.0.0:${PORT:-8000} \
+  --access-logfile - \
+  --error-logfile - \
+  --log-level info"]
