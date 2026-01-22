@@ -47,8 +47,7 @@ COPY --from=builder /root/.local /root/.local
 
 # Install Playwright browsers (runtime)
 
-RUN uv pip install playwright \
-    && uv run playwright install --with-deps
+RUN uv run --system playwright install --with-deps
 
 COPY . .
 
