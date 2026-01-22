@@ -30,72 +30,82 @@ class TrendsScraper:
     ) -> bytes:
         try:
             """Fetch trending CSV from Google Trends and return CSV content as bytes."""
-            url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status={sts}"
-
             if sts == "active":
                 url = f"https://trends.google.com/trending?geo={geo}&hours={hours}&status=active"
             else:
                 url = f"https://trends.google.com/trending?geo={geo}&hours={hours}"
-
+    
             print(f"Fetching trends from URL: {url}")
+    
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
-                    headless=True,  # change to False for debugging
+                    headless=False,  # keep False for debugging
                     args=["--no-sandbox"],
                 )
-                page = await browser.new_page(viewport={"width": 1280, "height": 720})
-
-                # Step 1: Load page
-                await page.goto(url, timeout=30000, wait_until="networkidle")
-                await page.wait_for_timeout(2000)  # ensure JS renders
-
-                # Step 2: Click Export button
-                export_button = page.locator(
-                    'span[jsname="V67aGc"].FOBRw-vQzf8d >> text=Export'
+    
+                page = await browser.new_page(
+                    viewport={"width": 1280, "height": 720},
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
                 )
-                await export_button.wait_for(state="visible", timeout=15000)
+    
+                # Step 1: Load page
+                await page.goto(url, timeout=30000, wait_until="domcontentloaded")  # 🔧 CHANGED
+                await page.wait_for_timeout(2000)
+    
+                # Step 2: Click Export button (menu button)
+                export_button = page.get_by_role("button", name="Export")  # 🔧 CHANGED
+                await export_button.wait_for(timeout=20000)               # 🔧 CHANGED
                 await export_button.click()
-
-                # Step 3: Wait for dropdown menu to appear
-                await page.wait_for_timeout(1000)
-
-                # Step 4: Locate "Download CSV" relative to Export button
-                download_button = export_button.locator(
-                    'xpath=following::span[contains(text(), "Download CSV")]'
-                ).first
-                await download_button.wait_for(state="visible", timeout=10000)
-                print(f"downloaded csv")
-
-                # Step 5: Trigger download and save to temp file
-                async with page.expect_download() as download_info:
-                    await download_button.click(force=True)
-
+    
+                print("Export menu clicked")
+    
+                # Step 3: Small wait for menu animation
+                await page.wait_for_timeout(500)  # 🔧 CHANGED (shorter & intentional)
+    
+                # Step 4: Locate Download CSV from global menu
+                download_button = page.get_by_role("menuitem", name="Download CSV")  # 🔧 CHANGED
+                await download_button.wait_for(state="attached", timeout=15000)      # 🔧 CHANGED
+    
+                print("Download CSV option visible")
+    
+                # Step 5: Trigger download
+                async with page.expect_download(timeout=20000) as download_info:     # 🔧 CHANGED
+                    await download_button.click()
+    
                 download = await download_info.value
-
-                print(f"csv in temp file")
+                print("CSV downloaded to temp")
+    
                 # Step 6: Save to temporary file
-                with tempfile.NamedTemporaryFile(
-                    delete=False, suffix=".csv"
-                ) as tmp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
                     tmp_path = tmp_file.name
+    
                 await download.save_as(tmp_path)
-
-                # Step 7: Read bytes from temp file
+    
+                # Step 7: Read bytes
                 with open(tmp_path, "rb") as f:
                     csv_bytes = f.read()
-
-                print(f"bytes read from temp file")
-                # Step 8: Delete temp file
+    
+                print("CSV bytes read")
+    
+                # Step 8: Cleanup
                 os.remove(tmp_path)
-
+    
                 # Step 9: Close browser
                 await browser.close()
-                print(f"calling function to save csv bytes")
+    
+                print("Saving CSV bytes")
                 result = await self.save_csv_bytes(csv_bytes)
+    
             return {"result": result, "geo": geo, "hours": hours, "status": True}
-
+    
         except Exception as e:
+            print(f"Error fetching trending CSV: {e}")
             return {"status": False, "error": str(e), "geo": geo, "hours": hours}
+
 
     @staticmethod
     def parse_search_volume(volume_str: str) -> int:
