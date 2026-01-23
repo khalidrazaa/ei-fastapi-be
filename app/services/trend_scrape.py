@@ -39,7 +39,7 @@ class TrendsScraper:
     
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
-                    headless=False,  # keep False for debugging
+                    headless=True,  # keep False for debugging
                     args=["--no-sandbox"],
                 )
     

@@ -47,7 +47,7 @@ COPY --from=builder /root/.local /root/.local
 
 # Install Playwright browsers (runtime)
 
-RUN uv run --system playwright install --with-deps
+RUN uv run playwright install chromium --with-deps
 
 COPY . .
 
