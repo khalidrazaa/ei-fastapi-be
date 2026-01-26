@@ -98,13 +98,14 @@ class TrendsScraper:
                 await browser.close()
     
                 print("Saving CSV bytes")
-                result = await self.save_csv_bytes(csv_bytes)
+                #result = await self.save_csv_bytes(csv_bytes)
+                #await self.save_csv_bytes(csv_bytes)
     
-            return {"result": result, "geo": geo, "hours": hours, "status": True}
+            return csv_bytes
     
         except Exception as e:
             print(f"Error fetching trending CSV: {e}")
-            return {"status": False, "error": str(e), "geo": geo, "hours": hours}
+            return e
 
 
     @staticmethod
@@ -164,7 +165,6 @@ class TrendsScraper:
 
             print("total rows to process:", processed_rows)  #
 
-            to_categorize = []
             trend_map = {}
 
             print(f"adding in iteration {len(df)}")
