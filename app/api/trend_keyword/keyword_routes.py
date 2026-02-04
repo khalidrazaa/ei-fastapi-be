@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.keyword import KeywordRequest, KeywordResponse
 from app.services.keyword_service import KeywordService
 from app.services.trend_scrape import TrendsScraper

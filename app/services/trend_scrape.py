@@ -23,7 +23,7 @@ class TrendsScraper:
         db: AsyncSession
         gemini_client: instance of Gemini AI client with a categorize() method
         """
-        self.session_factory = session_factory
+        #self.session_factory = session_factory
         self.gemini = GeminiClient()
 
 
