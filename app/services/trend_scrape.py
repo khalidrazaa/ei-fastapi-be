@@ -5,25 +5,25 @@ import os
 import re
 import pandas as pd
 from playwright.async_api import async_playwright
-from sqlalchemy import select, desc, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.dialects.postgresql import insert
-from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
+#from sqlalchemy import select, desc, and_, or_
+#from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+#from sqlalchemy.dialects.postgresql import insert
+#from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
 from app.services.gemini_service import GeminiClient
 import warnings
 import asyncio
 import logging
+
+
 logger = logging.getLogger(__name__)
 
 
-
 class TrendsScraper:
-    def __init__(self, session_factory: async_sessionmaker):
+    def __init__(self):
         """
         db: AsyncSession
         gemini_client: instance of Gemini AI client with a categorize() method
         """
-        #self.session_factory = session_factory
         self.gemini = GeminiClient()
 
 
@@ -36,6 +36,38 @@ class TrendsScraper:
                 logger.exception("Background task failed")
 
         asyncio.create_task(wrapper())
+
+
+    async def process(self, geo: str, hours: str, sts: str) -> dict:
+        # 1️⃣ scrape (WAIT)
+        csv_bytes = await self.fetch_trending_csv_bytes(
+            geo=geo, hours=hours, sts=sts
+        )
+
+        # if scraping failed, bubble up
+        if not isinstance(csv_bytes, (bytes, bytearray)):
+            return {
+                "status": "failed",
+                "reason": "scrape_failed"
+            }
+
+        # 2️⃣ count rows (cheap + synchronous)
+        try:
+            df = pd.read_csv(BytesIO(csv_bytes))
+            count = len(df)
+        except Exception:
+            count = None
+
+        # 3️⃣ detach saving + categorization
+        self.fire_and_forget(self.save_csv_bytes(csv_bytes))
+
+        # 4️⃣ respond meaningfully
+        return {
+            "status": "scraped",
+            "count": count,
+            "geo": geo,
+            "hours": hours
+        }
 
     async def fetch_trending_csv_bytes(
         self,
@@ -113,16 +145,12 @@ class TrendsScraper:
                 await browser.close()
     
                 print("Saving CSV bytes")
-                #result = await self.save_csv_bytes(csv_bytes)
-
-                self.fire_and_forget(self.save_csv_bytes(csv_bytes))
-
-    
-            return {"result":"BG task triggered", "geo": geo, "hours": hours, "status": True}
+            return csv_bytes
     
         except Exception as e:
             print(f"Error fetching trending CSV: {e}")
-            return {"status": False, "error": str(e), "geo": geo, "hours": hours}
+            logger.exception("Error fetching trending CSV")
+            raise
 
 
     @staticmethod
