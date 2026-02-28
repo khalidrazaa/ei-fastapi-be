@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from app.services.youtube_service import YouTubeService
+
 from app.schemas.keyword import KeywordRequest, KeywordResponse
 from app.services.keyword_service import KeywordService
 from app.services.trend_scrape import TrendsScraper
@@ -12,6 +14,26 @@ async def scrape_trends(
     scraper = TrendsScraper()
     return await scraper.fetch_trending_csv_bytes(geo, hours, sts)
 
+@router.post("/youtube/scan")
+async def scan_youtube_trends(niche: str):
+    """
+    Scans YouTube for breakout videos related to the given niche and updates the database. 
+    """
+    if niche not in NICHE_MAPPING:
+        raise HTTPException(status_code=400, detail="Niche not found")
+    
+    keywords = NICHE_MAPPING[niche]
+    yt_service = YouTubeService()
+
+    try:
+        trends = await yt_service.find_breakout_videos(keywords)
+        return {
+            "niche": niche,
+            "trends": trends,
+            "count": len(trends)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/list_trends")
 async def list_trends(
@@ -41,11 +63,3 @@ async def list_trends(
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
-
-
-@router.post("/keywords", response_model=KeywordResponse)
-async def get_keywords(req: KeywordRequest):
-    if not req.keyword or not req.keyword.strip():
-        raise HTTPException(status_code=400, detail="keyword is required")
-    service = KeywordService()
-    return await service.get_keyword_data(req.keyword.strip())
