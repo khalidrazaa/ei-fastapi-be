@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from app.services.youtube_service import YouTubeService
+from app.services.niche_service import NicheService
 
 from app.schemas.keyword import KeywordRequest, KeywordResponse
 from app.services.keyword_service import KeywordService
@@ -14,26 +15,6 @@ async def scrape_trends(
     scraper = TrendsScraper()
     return await scraper.fetch_trending_csv_bytes(geo, hours, sts)
 
-@router.post("/youtube/scan")
-async def scan_youtube_trends(niche: str):
-    """
-    Scans YouTube for breakout videos related to the given niche and updates the database. 
-    """
-    if niche not in NICHE_MAPPING:
-        raise HTTPException(status_code=400, detail="Niche not found")
-    
-    keywords = NICHE_MAPPING[niche]
-    yt_service = YouTubeService()
-
-    try:
-        trends = await yt_service.find_breakout_videos(keywords)
-        return {
-            "niche": niche,
-            "trends": trends,
-            "count": len(trends)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/list_trends")
 async def list_trends(
@@ -63,3 +44,34 @@ async def list_trends(
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
+
+@router.post("/youtube/scan")
+async def scan_youtube_trends(niche_name: str):
+    """
+    Scans YouTube for breakout videos related to the given niche and updates the database. 
+    """
+    niche_service = NicheService()
+    yt_service = YouTubeService()
+    keywords = await niche_service.get_keywords_for_niche(niche_name)
+
+    if not keywords:
+        raise HTTPException(status_code=404,
+                            detail=f"No keywords found for niche : {niche_name}. Add some keywords to the niche first.")
+    
+    try:
+        trends = await yt_service.find_breakout_videos(keywords)
+        return{
+            "niche": niche_name,
+            "trends_found": len(trends),
+            "trends": trends
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error scanning YouTube trends: {str(e)}")
+
+    await yt_service.find_breakout_videos(keywords)
+
+
+@router.get("/niches")
+async def get_all_niches():
+    # Your service logic here...
+    pass
