@@ -8,13 +8,16 @@ Run Migration scripts
 import new model in "geneerate_sql_from_models.py" file.
 
 # Step 1: generate new migration file from updated models
+
+# alembic installed for migration:
+alembic revision --autogenerate -m "initial schema"
+
+# manual migration
 python -m migrations.generate_sql_from_models
     ## this script will generate .sql file 
 
 # Step 2: apply the migration(s) to DB
 python -m migrations.migration_script
-
-
 
 # In your project folder (where Dockerfile is), run:
 docker build -t explainit-fastapi:local .

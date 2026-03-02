@@ -29,11 +29,11 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.db.models import AdminUser
-from app.db.models import Article
+from app.db.models import article
 from app.db.models import EmailOTP
-from app.db.models import Niche
-from app.db.models import Token
-from app.db.models import Trends
+from app.db.models import niche
+from app.db.models import token
+from app.db.models import trends
 
 from app.db.base import Base
 target_metadata = Base.metadata

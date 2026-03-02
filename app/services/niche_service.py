@@ -1,6 +1,6 @@
 # app/services/niche.py
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.query import niche as niche_query
 
 
