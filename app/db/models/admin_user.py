@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, Boolean
-from app.db.session import Base
 import uuid
+
+from app.db.base import Base
 
 
 class AdminUser(Base):

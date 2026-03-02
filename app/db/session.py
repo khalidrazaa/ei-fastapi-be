@@ -11,8 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
-
-
+  # Import your declarative base
 
 # Load environment variables
 load_dotenv()
@@ -35,11 +34,6 @@ engine = create_async_engine(
 SessionLocal = async_sessionmaker(
     bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession
 )
-
-
-# Base class for models
-class Base(DeclarativeBase):
-    pass
 
 
 # Dependency for FastAPI routes

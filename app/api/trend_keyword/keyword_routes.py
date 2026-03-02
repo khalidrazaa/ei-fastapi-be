@@ -2,8 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from app.services.youtube_service import YouTubeService
 from app.services.niche_service import NicheService
 
-from app.schemas.keyword import KeywordRequest, KeywordResponse
-from app.services.keyword_service import KeywordService
 from app.services.trend_scrape import TrendsScraper
 
 router = APIRouter()
@@ -69,9 +67,3 @@ async def scan_youtube_trends(niche_name: str):
         raise HTTPException(status_code=500, detail=f"Error scanning YouTube trends: {str(e)}")
 
     await yt_service.find_breakout_videos(keywords)
-
-
-@router.get("/niches")
-async def get_all_niches():
-    # Your service logic here...
-    pass

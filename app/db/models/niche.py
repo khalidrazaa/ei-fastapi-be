@@ -1,8 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+from app.db.base import Base
 
-Base = declarative_base()
 
 class Niche(Base):
     __tablename__ = "niches"
