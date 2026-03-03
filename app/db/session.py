@@ -1,11 +1,17 @@
 # app/db/session.py
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import NullPool
-from sqlalchemy.orm import DeclarativeBase
-from typing import AsyncGenerator
 import os
+from typing import AsyncGenerator
 from dotenv import load_dotenv
+
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession
+)
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
+  # Import your declarative base
 
 # Load environment variables
 load_dotenv()
@@ -28,11 +34,6 @@ engine = create_async_engine(
 SessionLocal = async_sessionmaker(
     bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession
 )
-
-
-# Base class for models
-class Base(DeclarativeBase):
-    pass
 
 
 # Dependency for FastAPI routes

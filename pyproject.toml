@@ -110,6 +110,8 @@ dependencies = [
     "wcwidth==0.2.14",
     "websockets==15.0.1",
     "gunicorn",
+    "google-api-python-client>=2.190.0",
+    "alembic>=1.18.4",
 ]
 
 [tool.ruff]

@@ -5,22 +5,69 @@ import os
 import re
 import pandas as pd
 from playwright.async_api import async_playwright
-from sqlalchemy import select, desc, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert
-from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
+#from sqlalchemy import select, desc, and_, or_
+#from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+#from sqlalchemy.dialects.postgresql import insert
+#from app.db.models.trends import TrendItem, VolumePoint, TrendStatus
 from app.services.gemini_service import GeminiClient
 import warnings
+import asyncio
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class TrendsScraper:
-    def __init__(self, db: AsyncSession):
+    def __init__(self):
         """
         db: AsyncSession
         gemini_client: instance of Gemini AI client with a categorize() method
         """
-        self.db = db
         self.gemini = GeminiClient()
+
+
+    @staticmethod
+    def fire_and_forget(coro):
+        async def wrapper():
+            try:
+                await coro
+            except Exception:
+                logger.exception("Background task failed")
+
+        asyncio.create_task(wrapper())
+
+
+    async def process(self, geo: str, hours: str, sts: str) -> dict:
+        # 1️⃣ scrape (WAIT)
+        csv_bytes = await self.fetch_trending_csv_bytes(
+            geo=geo, hours=hours, sts=sts
+        )
+
+        # if scraping failed, bubble up
+        if not isinstance(csv_bytes, (bytes, bytearray)):
+            return {
+                "status": "failed",
+                "reason": "scrape_failed"
+            }
+
+        # 2️⃣ count rows (cheap + synchronous)
+        try:
+            df = pd.read_csv(BytesIO(csv_bytes))
+            count = len(df)
+        except Exception:
+            count = None
+
+        # 3️⃣ detach saving + categorization
+        self.fire_and_forget(self.save_csv_bytes(csv_bytes))
+
+        # 4️⃣ respond meaningfully
+        return {
+            "status": "scraped",
+            "count": count,
+            "geo": geo,
+            "hours": hours
+        }
 
     async def fetch_trending_csv_bytes(
         self,
@@ -98,13 +145,12 @@ class TrendsScraper:
                 await browser.close()
     
                 print("Saving CSV bytes")
-                result = await self.save_csv_bytes(csv_bytes)
-    
-            return {"result": result, "geo": geo, "hours": hours, "status": True}
+            return csv_bytes
     
         except Exception as e:
             print(f"Error fetching trending CSV: {e}")
-            return {"status": False, "error": str(e), "geo": geo, "hours": hours}
+            logger.exception("Error fetching trending CSV")
+            raise
 
 
     @staticmethod
@@ -134,126 +180,127 @@ class TrendsScraper:
 
         return int(number)
 
-    async def save_csv_bytes(self, csv_bytes: bytes, batch_size: int = 10) -> dict:
-        try:
-            print("called function to save csv bytes")
-            ts_now = datetime.utcnow()
+    async def save_csv_bytes(self, csv_bytes: bytes) -> dict:
+        ts_now = datetime.utcnow()
 
-            # ✅ initialize counters at the top so they exist even if error happens early
-            inserted_count = 0
-            updated_count = 0
-            categorized_count = 0
+        async with self.session_factory() as db:
+            try:
+                df = pd.read_csv(BytesIO(csv_bytes))
+                df.columns = [c.strip() for c in df.columns]
 
-            df = pd.read_csv(BytesIO(csv_bytes))
-            df.columns = [c.strip() for c in df.columns]
+                df["search_volume"] = (
+                    df["Search volume"].fillna("0").apply(self.parse_search_volume)
+                )
 
-            df["search_volume"] = (
-                df["Search volume"].fillna("0").apply(self.parse_search_volume)
-            )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True)
+                    df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True)
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                df["started"] = pd.to_datetime(df["Started"], errors="coerce", utc=True)
-                df["ended"] = pd.to_datetime(df["Ended"], errors="coerce", utc=True)
+                df["trend_breakdown"] = df["Trend breakdown"].fillna("").str.strip()
+                df["explore_link"] = df["Explore link"]
+                df = df[df["search_volume"] > 0]
 
-            df["trend_breakdown"] = df["Trend breakdown"].fillna("").str.strip()
-            df["explore_link"] = df["Explore link"]
-            df = df[df["search_volume"] > 0]
+                if df.empty:
+                    return {"status": "no_data"}
 
-            processed_rows = len(df)
-
-            print("total rows to process:", processed_rows)  #
-
-            to_categorize = []
-            trend_map = {}
-
-            print(f"adding in iteration {len(df)}")
-
-            # Step 1: Add/update trends
-            for _, row in df.iterrows():
-                trend_name = row["Trends"].strip()
-                stmt = select(TrendItem).where(TrendItem.trend == trend_name)
-                result = await self.db.execute(stmt)
-                trend = result.scalar_one_or_none()
-
-                if trend:
-                    trend.search_volume = row["search_volume"]  # update current volume
-                    updated_count += 1
-                else:
-                    trend = TrendItem(
-                        trend=trend_name,
-                        search_volume=row["search_volume"],
-                        started=row["started"].to_pydatetime()
-                        if pd.notna(row["started"])
-                        else None,
-                        ended=row["ended"].to_pydatetime()
-                        if pd.notna(row["ended"])
-                        else None,
-                        trend_breakdown=row["trend_breakdown"],
-                        explore_link=row["explore_link"],
-                        is_growing=False,
-                        status=TrendStatus.Open,
+                # -------------------------
+                # 1️⃣ UPSERT trends
+                # -------------------------
+                trend_rows = []
+                for _, row in df.iterrows():
+                    trend_rows.append(
+                        {
+                            "trend": row["Trends"].strip(),
+                            "search_volume": row["search_volume"],
+                            "started": row["started"].to_pydatetime()
+                            if pd.notna(row["started"])
+                            else None,
+                            "ended": row["ended"].to_pydatetime()
+                            if pd.notna(row["ended"])
+                            else None,
+                            "trend_breakdown": row["trend_breakdown"],
+                            "explore_link": row["explore_link"],
+                            "status": TrendStatus.Open,
+                        }
                     )
-                    self.db.add(trend)
-                    await self.db.flush()  # assign trend.id
-                    inserted_count += 1
 
-                trend_map[trend_name] = trend
+                stmt = (
+                    insert(TrendItem)
+                    .values(trend_rows)
+                    .on_conflict_do_update(
+                        index_elements=["trend"],
+                        set_={
+                            "search_volume": insert(TrendItem).excluded.search_volume,
+                            "ended": insert(TrendItem).excluded.ended,
+                        },
+                    )
+                    .returning(TrendItem.id, TrendItem.trend)
+                )
 
-            # Commit trends first before inserting volume points
-            await self.db.commit()
+                result = await db.execute(stmt)
+                await db.commit()
 
-            # Step 2: Insert or update volume_points with upsert
-            print("Inserting volume points (upsert)...")
-            volume_rows = []
-            for trend in trend_map.values():
-                volume_rows.append(
+                trend_id_map = {row.trend: row.id for row in result.fetchall()}
+
+                # -------------------------
+                # 2️⃣ UPSERT volume points
+                # -------------------------
+                volume_rows = [
                     {
-                        "trend_id": trend.id,
+                        "trend_id": trend_id_map[row["Trends"].strip()],
                         "ts": ts_now,
-                        "value": trend.search_volume,
+                        "value": row["search_volume"],
                     }
+                    for _, row in df.iterrows()
+                    if row["Trends"].strip() in trend_id_map
+                ]
+
+                if volume_rows:
+                    stmt = (
+                        insert(VolumePoint)
+                        .values(volume_rows)
+                        .on_conflict_do_update(
+                            index_elements=["trend_id", "ts"],
+                            set_={"value": insert(VolumePoint).excluded.value},
+                        )
+                    )
+                    await db.execute(stmt)
+                    await db.commit()
+
+                # -------------------------
+                # 3️⃣ Categorization
+                # -------------------------
+                stmt = select(TrendItem).where(
+                    TrendItem.id.in_(trend_id_map.values()),
+                    TrendItem.category.is_(None),
                 )
+                res = await db.execute(stmt)
+                uncategorized = res.scalars().all()
 
-            if volume_rows:
-                stmt = insert(VolumePoint).values(volume_rows)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["trend_id", "ts"],
-                    set_={"value": stmt.excluded.value},
-                )
-                await self.db.execute(stmt)
-                await self.db.commit()
+                if uncategorized:
+                    trends = [t.trend for t in uncategorized]
+                    breakdowns = [t.trend_breakdown for t in uncategorized]
 
-            print("batching categorize function")
+                    cats = await self.gemini.categorize_batch(trends, breakdowns)
+                    for t, cat in zip(uncategorized, cats):
+                        t.category = cat.get("category")
+                        t.subcategory = cat.get("subcategory")
 
-            # Step 3: Categorize uncategorized trends
-            uncategorized = [t for t in trend_map.values() if not t.category]
-            if uncategorized:
-                trends = [t.trend for t in uncategorized]
-                breakdowns = [t.trend_breakdown for t in uncategorized]
+                    await db.commit()
 
-                gemini_results = await self.gemini.categorize_batch(trends, breakdowns)
-                for trend, cat_dict in zip(uncategorized, gemini_results):
-                    trend.category = cat_dict.get("category")
-                    trend.subcategory = cat_dict.get("subcategory")
-                    categorized_count += 1
+                return {
+                    "processed_rows": len(df),
+                    "status": "success",
+                }
 
-                await self.db.commit()
+            except Exception:
+                await db.rollback()
+                logger.exception("Failed saving CSV bytes")
+                return {"status": "error"}
 
-            print("saved to db")
 
-            return {
-                "processed_rows": processed_rows,
-                "inserted_count": inserted_count,
-                "updated_count": updated_count,
-                "categorized_count": categorized_count,
-            }
-
-        except Exception as e:
-            await self.db.rollback()
-            print(f"Error saving CSV bytes: {e}")
-            return {"status": False, "error": str(e)}
-
+    
     async def list_trends(
         self,
         search: str | None = None,
