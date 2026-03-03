@@ -3,108 +3,88 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.db.models.niche import Niche, NicheKeyword
 
 
-# =========================================================
+# =========================
 # NICHE
-# =========================================================
+# =========================
 
-def get_niche_by_id(db: Session, niche_id: int) -> Optional[Niche]:
-    return db.get(Niche, niche_id)
-
-
-def get_niche_by_name(db: Session, name: str) -> Optional[Niche]:
-    stmt = select(Niche).where(Niche.name == name)
-    return db.execute(stmt).scalar_one_or_none()
-
-
-def get_niche_by_slug(db: Session, slug: str) -> Optional[Niche]:
-    stmt = select(Niche).where(Niche.slug == slug)
-    return db.execute(stmt).scalar_one_or_none()
-
-
-def get_all_niches(
-    db: Session,
-    skip: int = 0,
-    limit: int = 50
-) -> List[Niche]:
-    stmt = select(Niche).offset(skip).limit(limit)
-    return db.execute(stmt).scalars().all()
-
-
-def create_niche(
-    db: Session,
-    name: str,
-    display_name: str,
-    slug: str,
-) -> Niche:
-    niche = Niche(
-        name=name,
-        display_name=display_name,
-        slug=slug,
+async def get_niche_by_id(db: AsyncSession, niche_id: int) -> Optional[Niche]:
+    stmt = (
+        select(Niche)
+        .options(selectinload(Niche.keywords))
+        .where(Niche.id == niche_id)
     )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_niche_by_name(db: AsyncSession, name: str) -> Optional[Niche]:
+    stmt = (
+        select(Niche)
+        .options(selectinload(Niche.keywords))
+        .where(Niche.name == name)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_all_niches(db: AsyncSession, skip: int = 0, limit: int = 50) -> List[Niche]:
+    stmt = (
+        select(Niche)
+        .options(selectinload(Niche.keywords))
+        .offset(skip)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+async def create_niche(db: AsyncSession, **data) -> Niche:
+    niche = Niche(**data)
     db.add(niche)
-    db.commit()
-    db.refresh(niche)
-    return niche
+    await db.commit()
+    await db.refresh(niche)
+    return await get_niche_by_id(db, niche.id)
 
 
-def update_niche(
-    db: Session,
-    niche: Niche,
-    **kwargs
-) -> Niche:
+async def update_niche(db: AsyncSession, niche: Niche, **kwargs) -> Niche:
     for key, value in kwargs.items():
         setattr(niche, key, value)
-
-    db.commit()
-    db.refresh(niche)
-    return niche
-
-
-def delete_niche(db: Session, niche: Niche) -> None:
-    db.delete(niche)
-    db.commit()
+    await db.commit()
+    await db.refresh(niche)
+    return await get_niche_by_id(db, niche.id)
 
 
-# =========================================================
+async def delete_niche(db: AsyncSession, niche: Niche) -> None:
+    await db.delete(niche)
+    await db.commit()
+
+
+# =========================
 # KEYWORDS
-# =========================================================
+# =========================
 
-def create_keyword(
-    db: Session,
-    niche_id: int,
-    keyword: str
-) -> NicheKeyword:
-    keyword_obj = NicheKeyword(
-        niche_id=niche_id,
-        keyword=keyword
-    )
+async def create_keyword(db: AsyncSession, niche_id: int, keyword: str) -> NicheKeyword:
+    keyword_obj = NicheKeyword(niche_id=niche_id, keyword=keyword)
     db.add(keyword_obj)
-    db.commit()
-    db.refresh(keyword_obj)
+    await db.commit()
+    await db.refresh(keyword_obj)
     return keyword_obj
 
 
-def get_keyword_by_id(
-    db: Session,
-    keyword_id: int
-) -> Optional[NicheKeyword]:
-    return db.get(NicheKeyword, keyword_id)
+async def get_keyword_by_id(db: AsyncSession, keyword_id: int) -> Optional[NicheKeyword]:
+    return await db.get(NicheKeyword, keyword_id)
 
 
-def get_keywords_by_niche(
-    db: Session,
-    niche_id: int
-) -> List[NicheKeyword]:
+async def get_keywords_by_niche(db: AsyncSession, niche_id: int) -> List[NicheKeyword]:
     stmt = select(NicheKeyword).where(NicheKeyword.niche_id == niche_id)
-    return db.execute(stmt).scalars().all()
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
-def delete_keyword(
-    db: Session,
-    keyword: NicheKeyword
-) -> None:
-    db.delete(keyword)
-    db.commit()
+async def delete_keyword(db: AsyncSession, keyword: NicheKeyword) -> None:
+    await db.delete(keyword)
+    await db.commit()

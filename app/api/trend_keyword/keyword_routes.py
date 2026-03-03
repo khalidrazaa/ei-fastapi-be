@@ -43,27 +43,3 @@ async def list_trends(
         sort_dir=sort_dir,
     )
 
-@router.post("/youtube/scan")
-async def scan_youtube_trends(niche_name: str):
-    """
-    Scans YouTube for breakout videos related to the given niche and updates the database. 
-    """
-    niche_service = NicheService()
-    yt_service = YouTubeService()
-    keywords = await niche_service.get_keywords_for_niche(niche_name)
-
-    if not keywords:
-        raise HTTPException(status_code=404,
-                            detail=f"No keywords found for niche : {niche_name}. Add some keywords to the niche first.")
-    
-    try:
-        trends = await yt_service.find_breakout_videos(keywords)
-        return{
-            "niche": niche_name,
-            "trends_found": len(trends),
-            "trends": trends
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error scanning YouTube trends: {str(e)}")
-
-    await yt_service.find_breakout_videos(keywords)

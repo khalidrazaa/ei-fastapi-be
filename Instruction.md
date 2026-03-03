@@ -4,15 +4,19 @@ uv run uvicorn app.main:app --reload
 
 fastapi backend for explaintit.tech
 
-Run Migration scripts
-import new model in "geneerate_sql_from_models.py" file.
-
 # Step 1: generate new migration file from updated models
 
 # alembic installed for migration:
+# For first time  
 alembic revision --autogenerate -m "initial schema"
+alembic revision --autogenerate -m "add niche and niche_keyword tables"
+
+alembic upgrade head
 
 # manual migration
+
+# Run Migration scripts
+import new model in "geneerate_sql_from_models.py" file.
 python -m migrations.generate_sql_from_models
     ## this script will generate .sql file 
 

@@ -2,34 +2,38 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.query import niche as niche_query
+from app.schemas.niche import NicheCreate
 
 
 class NicheService:
 
-    def create_niche(self, db: Session, name: str, display_name: str):
-        existing = niche_query.get_niche_by_name(db, name)
+    async def create_niche(self, db: AsyncSession, niche: NicheCreate):
+        existing = await niche_query.get_niche_by_name(db, niche.name)
         if existing:
             return existing
 
-        return niche_query.create_niche(db, name, display_name)
+        return await niche_query.create_niche(
+            db,
+            name=niche.name,
+            display_name=niche.display_name,
+            region_code=niche.region_code,
+            scan_mode=niche.scan_mode,
+            is_active=niche.is_active,
+        )
 
+    async def get_all_niches(self, db: AsyncSession):
+        return await niche_query.get_all_niches(db)
 
-    def get_all_niches(self, db: Session):
-        return niche_query.get_all_niches(db)
-
-
-    def delete_niche(self, db: Session, niche_id: int):
-        niche = niche_query.get_niche_by_id(db, niche_id)
+    async def delete_niche(self, db: AsyncSession, niche_id: int):
+        niche = await niche_query.get_niche_by_id(db, niche_id)
         if niche:
-            niche_query.delete_niche(db, niche)
+            await niche_query.delete_niche(db, niche)
 
+    async def add_seed_keyword(self, db: AsyncSession, niche_id: int, keyword: str):
+        return await niche_query.create_keyword(db, niche_id, keyword)
 
-    def add_seed_keyword(self, db: Session, niche_id: int, keyword: str):
-        return niche_query.create_keyword(db, niche_id, keyword)
-
-
-    def delete_keyword(self, db: Session, niche_id: int, keyword_id: int):
-        keyword = niche_query.get_keyword_by_id(db, keyword_id)
+    async def delete_keyword(self, db: AsyncSession, niche_id: int, keyword_id: int):
+        keyword = await niche_query.get_keyword_by_id(db, keyword_id)
 
         if not keyword:
             return
@@ -37,4 +41,4 @@ class NicheService:
         if keyword.niche_id != niche_id:
             return
 
-        niche_query.delete_keyword(db, keyword_id)
+        await niche_query.delete_keyword(db, keyword)
