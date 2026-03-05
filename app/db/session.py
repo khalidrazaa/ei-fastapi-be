@@ -4,6 +4,8 @@ import os
 from typing import AsyncGenerator
 from dotenv import load_dotenv
 
+from app.core.config import settings
+
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
@@ -17,12 +19,10 @@ from sqlalchemy.pool import NullPool
 load_dotenv()
 
 # Convert DATABASE_URL for async usage with asyncpg
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace(
-    "postgresql://", "postgresql+asyncpg://"
-)
+DATABASE_URL = settings.ASYNC_DATABASE_URL
 
 # Create the async engine
-engine = create_async_engine(
+engine = create_async_engine(   
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
