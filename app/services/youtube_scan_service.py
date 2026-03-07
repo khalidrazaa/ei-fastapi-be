@@ -2,12 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.clients.youtube_client import YouTubeClient
-from app.db.query import niche_keyword as keyword_query
-from app.db.query import trend_video as trend_video_query
+from app.db.query.niche import 
 
 
 class YouTubeScanService:

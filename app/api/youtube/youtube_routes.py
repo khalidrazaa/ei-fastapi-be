@@ -10,7 +10,7 @@ from app.schemas.youtube import YouTubeScanResponse
 from app.db.query.trend_video import get_videos_by_keyword
 
 
-router = APIRouter(tags=["youtube-intelligence"])
+router = APIRouter()
 
 
 @router.post("/keywords/{keyword_id}/scan-youtube",response_model=YouTubeScanResponse,)

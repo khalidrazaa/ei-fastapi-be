@@ -1,7 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from app.services.youtube_service import YouTubeService
-from app.services.niche_service import NicheService
-
+from fastapi import APIRouter
 from app.services.trend_scrape import TrendsScraper
 
 router = APIRouter()
