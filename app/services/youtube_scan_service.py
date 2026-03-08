@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.clients.youtube_client import YouTubeClient
-from app.db.query.niche import 
+from app.db.query.niche import get_keywords_by_niche, get_keyword_by_id
+from app.db.query.trend_video import create_or_update
+from app.schemas import niche
 
 
 class YouTubeScanService:
@@ -20,13 +22,41 @@ class YouTubeScanService:
     # PUBLIC METHODS
     # ---------------------------------------------------
 
+    async def scan_niche(self, niche_id: int) -> int:
+        """
+        Scan YouTube for all keywords of a niche.
+        """
+
+        keywords = await get_keywords_by_niche(
+            db=self.db,
+            niche_id=niche_id,
+        )
+
+        if not keywords:
+            raise ValueError("No keywords found for this niche")
+
+        total_videos_saved = 0
+
+        for keyword in keywords:
+
+            videos_saved = await self.scan_keyword(
+                keyword.id
+            )
+            total_videos_saved += videos_saved
+            
+        # 🔹 update scan timestamp
+        niche.last_scanned_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+        return total_videos_saved
+
     async def scan_keyword(self, keyword_id: int) -> int:
         """
         Scan breakout videos for a specific keyword.
         Returns number of processed videos.
         """
 
-        keyword = await keyword_query.get_by_id(self.db, keyword_id)
+        keyword = await get_keyword_by_id(self.db, keyword_id)
         if not keyword:
             return 0
 
@@ -71,7 +101,7 @@ class YouTubeScanService:
 
             score = self._calculate_velocity(video, subs)
 
-            await trend_video_query.create_or_update(
+            await create_or_update(
                 db=self.db,
                 keyword_id=keyword_id,
                 video_data=video,

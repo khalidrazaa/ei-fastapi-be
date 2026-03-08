@@ -15,5 +15,5 @@ router.include_router(
 
 router.include_router(niche_routes.router, prefix="/admin/niches", tags=["niches"])
 
-router.include_router(youtube_routes.router, prefix="/admin/youtube", tags=["youtube-intelligence"]
+router.include_router(youtube_routes.router, prefix="/admin/youtube-scan", tags=["youtube-intelligence"]
 )
