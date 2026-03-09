@@ -1,4 +1,15 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, func
+# app/db/models/trend_video.py
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    DateTime,
+    Float,
+    func,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -8,13 +19,15 @@ class TrendVideo(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    niche_id = Column(
+    # 🔥 Now linked to keyword (not niche)
+    keyword_id = Column(
         Integer,
-        ForeignKey("niches.id", ondelete="CASCADE"),
-        nullable=False
+        ForeignKey("niche_keywords.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
-    youtube_video_id = Column(String, index=True, nullable=False)
+    youtube_video_id = Column(String, nullable=False, index=True)
 
     title = Column(String, nullable=False)
     channel_title = Column(String, nullable=False)
@@ -27,6 +40,19 @@ class TrendVideo(Base):
 
     virality_score = Column(Float, nullable=False)
 
-    scanned_at = Column(DateTime(timezone=True), server_default=func.now())
+    scanned_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
 
-    niche = relationship("Niche")
+    # Relationship to keyword
+    keyword = relationship("NicheKeyword")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "keyword_id",
+            "youtube_video_id",
+            name="uq_keyword_video",
+        ),
+    )
