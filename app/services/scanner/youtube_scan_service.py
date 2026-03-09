@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.clients.youtube_client import YouTubeClient
 from app.db.query.niche import get_keywords_by_niche, get_keyword_by_id
@@ -22,32 +23,25 @@ class YouTubeScanService:
     # PUBLIC METHODS
     # ---------------------------------------------------
 
-    async def scan_niche(self, niche_id: int) -> int:
-        """
-        Scan YouTube for all keywords of a niche.
-        """
-
+    async def scan_youtube_niche(self, niche_id: int) -> int:
+    
         keywords = await get_keywords_by_niche(
             db=self.db,
             niche_id=niche_id,
         )
-
+    
         if not keywords:
             raise ValueError("No keywords found for this niche")
-
-        total_videos_saved = 0
-
-        for keyword in keywords:
-
-            videos_saved = await self.scan_keyword(
-                keyword.id
-            )
-            total_videos_saved += videos_saved
-            
-        # 🔹 update scan timestamp
-        niche.last_scanned_at = datetime.now(timezone.utc)
-        await self.db.commit()
-
+    
+        tasks = [
+            self.scan_keyword(keyword.id)
+            for keyword in keywords
+        ]
+    
+        results = await asyncio.gather(*tasks)
+    
+        total_videos_saved = sum(results)
+    
         return total_videos_saved
 
     async def scan_keyword(self, keyword_id: int) -> int:

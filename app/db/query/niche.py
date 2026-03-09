@@ -1,8 +1,9 @@
 # app/db/query/niche.py
 
+from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from app.db.models.niche import Niche, NicheKeyword
 
@@ -60,6 +61,21 @@ async def update_niche(db: AsyncSession, niche: Niche, **kwargs) -> Niche:
 
 async def delete_niche(db: AsyncSession, niche: Niche) -> None:
     await db.delete(niche)
+    await db.commit()
+
+
+async def update_last_scanned(db: AsyncSession, niche_id: int,scanned_at: datetime,):
+    """
+    Update last scanned timestamp for a niche.
+    """
+
+    stmt = (
+        update(Niche)
+        .where(Niche.id == niche_id)
+        .values(last_scanned_at=scanned_at)
+    )
+
+    await db.execute(stmt)
     await db.commit()
 
 
