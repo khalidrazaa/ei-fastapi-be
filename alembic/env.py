@@ -28,13 +28,14 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from app.db.models import AdminUser
-from app.db.models import article
-from app.db.models import EmailOTP
-from app.db.models import niche
-from app.db.models import token
-from app.db.models import trends
-from app.db.models import trend_video
+
+# from app.db.models import AdminUser
+# from app.db.models import article
+# from app.db.models import EmailOTP
+# from app.db.models import niche
+# from app.db.models import token
+# from app.db.models import trends
+# from app.db.models import trend_video
 
 from app.db.base import Base
 target_metadata = Base.metadata
