@@ -46,6 +46,8 @@ class TrendVideo(Base):
         nullable=False,
     )
 
+    source = Column(String, nullable=False, default="youtube")
+    
     # Relationship to keyword
     keyword = relationship("NicheKeyword")
 

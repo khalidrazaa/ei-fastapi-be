@@ -5,6 +5,7 @@ from .article import Article
 from .niche import Niche, NicheKeyword
 from .trend_video import TrendVideo
 from .trends import TrendItem, TrendStatus
+from .discovered_trend import DiscoveredTrend
 
 __all__ = [
     "AdminUser",
@@ -15,5 +16,6 @@ __all__ = [
     "NicheKeyword",
     "TrendVideo",
     "TrendItem",
-    "TrendStatus"
+    "TrendStatus",
+    "DiscoveredTrend",
 ]  #  include all models
