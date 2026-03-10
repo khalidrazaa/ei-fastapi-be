@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.services.youtube_scan_service import YouTubeScanService
+from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.clients.youtube_client import YouTubeClient
 from app.schemas.trend_video import TrendVideoOut
 from app.schemas.youtube import YouTubeScanResponse

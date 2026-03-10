@@ -112,6 +112,7 @@ dependencies = [
     "gunicorn",
     "google-api-python-client>=2.190.0",
     "alembic>=1.18.4",
+    "apscheduler>=3.11.2",
 ]
 
 [tool.ruff]

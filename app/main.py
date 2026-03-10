@@ -5,6 +5,7 @@ from app.db.session import engine
 import asyncio
 import os
 from app.db.mongodb import get_mongo_db
+from app.scheduler.scheduler import start_scheduler
 
 app = FastAPI()
 
@@ -42,6 +43,11 @@ async def on_startup():
         print("✅ MongoDB connection successful.")
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
+
+    try:
+        start_scheduler()
+    except Exception as e:
+        print(f"❌ Scheduler failed to start: {e}")
 
 
 @app.get("/")
