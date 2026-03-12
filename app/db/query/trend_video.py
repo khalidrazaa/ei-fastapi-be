@@ -2,6 +2,7 @@
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from app.db.models.trend_video import TrendVideo
 
@@ -24,33 +25,44 @@ async def create_or_update(
 
     title = snippet.get("title", "")
     channel_title = snippet.get("channelTitle", "")
-    published_at = snippet.get("publishedAt")
+
+    # 🔥 Convert YouTube ISO string → datetime
+    published_at_raw = snippet.get("publishedAt")
+
+    published_at = None
+    if published_at_raw:
+        published_at = datetime.fromisoformat(
+            published_at_raw.replace("Z", "+00:00")
+        )
 
     view_count = int(stats.get("viewCount", 0))
+
     like_count = (
         int(stats.get("likeCount")) if stats.get("likeCount") else None
     )
+
     comment_count = (
         int(stats.get("commentCount")) if stats.get("commentCount") else None
     )
 
-    # 🔎 Check if video already exists for this keyword
+    # 🔎 Check if video already exists
     result = await db.execute(
         select(TrendVideo).where(
             TrendVideo.keyword_id == keyword_id,
             TrendVideo.youtube_video_id == youtube_video_id,
         )
     )
+
     existing = result.scalar_one_or_none()
 
     if existing:
-        # 🔁 Update existing record
         existing.title = title
         existing.channel_title = channel_title
         existing.view_count = view_count
         existing.like_count = like_count
         existing.comment_count = comment_count
         existing.virality_score = score
+        existing.published_at = published_at
 
         await db.commit()
         await db.refresh(existing)
@@ -75,6 +87,16 @@ async def create_or_update(
 
     return new_video
 
+async def get_recent_titles(db:AsyncSession, limit=500):
+
+    result = await db.execute(
+        select(TrendVideo.title)
+        .order_by(TrendVideo.scanned_at.desc())
+        .limit(limit)
+    )
+
+    return [row[0] for row in result.all()]
+
 async def get_videos_by_keyword(db: AsyncSession, keyword_id: int):
     result = await db.execute(
         select(TrendVideo)
@@ -82,3 +104,22 @@ async def get_videos_by_keyword(db: AsyncSession, keyword_id: int):
         .order_by(TrendVideo.published_at.desc())
     )
     return result.scalars().all()
+
+
+async def get_recent_videos(db: AsyncSession, hours=24):
+
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    result = await db.execute(
+        select(
+            TrendVideo.title,
+            TrendVideo.virality_score,
+            TrendVideo.scanned_at
+        ).where(
+            TrendVideo.scanned_at >= cutoff
+        )
+    )
+
+    return result.all()

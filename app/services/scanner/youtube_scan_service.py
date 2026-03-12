@@ -8,6 +8,7 @@ from app.clients.youtube_client import YouTubeClient
 from app.db.query.niche import get_keywords_by_niche, get_keyword_by_id
 from app.db.query.trend_video import create_or_update
 from app.schemas import niche
+import re
 
 
 class YouTubeScanService:
@@ -136,10 +137,50 @@ class YouTubeScanService:
         """
         Viral Velocity = views / subscribers
         """
-        stats = video.get("statistics", {})
-        views = int(stats.get("viewCount", 0))
+        #stats = video.get("statistics", {})
+        #views = int(stats.get("viewCount", 0))
 
-        if subs <= 0:
+        #if subs <= 0:
+        #    return 0.0
+
+        #return round(views / subs, 2)
+
+        stats = video.get("statistics", {})
+        snippet = video.get("snippet", {})
+
+        views = int(stats.get("viewCount", 0))
+        published_at = snippet.get("publishedAt")
+
+        if not published_at:
             return 0.0
 
-        return round(views / subs, 2)
+        published_dt = datetime.fromisoformat(
+            published_at.replace("Z", "+00:00")
+        )
+
+        hours = max(
+            (datetime.now(timezone.utc) - published_dt).total_seconds() / 3600,
+            1,
+        )
+
+        if subs <= 0:
+            subs = 1
+
+        velocity = (views / hours) / subs
+
+        return round(velocity, 4)  
+    
+    def _extract_keywords(self, title: str):
+        """
+        Simple keyword extraction from video titles
+        """
+        title = title.lower()
+
+        words = re.findall(r"\b[a-zA-Z]{3,}\b", title)
+
+        phrases = [
+            " ".join(words[i:i+2])
+            for i in range(len(words)-1)
+        ]
+
+        return phrases
