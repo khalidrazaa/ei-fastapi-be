@@ -6,6 +6,7 @@ from .niche import Niche, NicheKeyword
 from .trend_video import TrendVideo
 from .trends import TrendItem, TrendStatus
 from .discovered_trend import DiscoveredTrend
+from .idea_generated import TrendIdea
 
 __all__ = [
     "AdminUser",
@@ -18,4 +19,5 @@ __all__ = [
     "TrendItem",
     "TrendStatus",
     "DiscoveredTrend",
+    "TrendIdea",
 ]  #  include all models

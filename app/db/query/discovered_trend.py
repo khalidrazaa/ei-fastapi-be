@@ -19,6 +19,10 @@ async def upsert_trend(db: AsyncSession, data: dict):
         existing.burst_score = data["burst_score"]
         existing.video_count = data["count"]
 
+        await db.commit()
+
+        return existing.id
+
     else:
 
         trend = DiscoveredTrend(
@@ -30,4 +34,7 @@ async def upsert_trend(db: AsyncSession, data: dict):
 
         db.add(trend)
 
-    await db.commit()
+        await db.commit()
+        await db.refresh(trend)
+
+        return trend.id

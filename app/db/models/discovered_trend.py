@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Index, Integer, String, Float, DateTime
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -18,7 +19,14 @@ class DiscoveredTrend(Base):
 
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
 
+    ideas = relationship(
+    "TrendIdea",
+    back_populates="trend",
+    cascade="all, delete"
+    )
+
     __table_args__ = (
         Index("idx_trend_score", "score"),
         Index("idx_trend_burst", "burst_score"),
     )
+
