@@ -4,6 +4,8 @@ from aiosmtplib import send
 import httpx
 from dotenv import load_dotenv
 
+from app.core.config import settings
+
 load_dotenv()
 
 # Render is blocking smtp port 587 --- so we need to use a transactional email API- Brevo API
@@ -27,9 +29,13 @@ load_dotenv()
 
 
 async def send_email_otp(to_email: str, otp: str):
-    BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-    BREVO_SENDER = os.getenv("EMAIL_USERNAME")
-    url = os.getenv("BREVO_URL")
+    BREVO_API_KEY = settings.BREVO_API_KEY
+    BREVO_SENDER = settings.EMAIL_USERNAME
+    url = settings.BREVO_URL    
+    
+    #BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+    #BREVO_SENDER = os.getenv("EMAIL_USERNAME")
+    #url = os.getenv("BREVO_URL")
 
     headers = {
         "accept": "application/json",
