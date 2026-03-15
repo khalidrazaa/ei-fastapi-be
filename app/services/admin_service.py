@@ -29,7 +29,7 @@ async def create_admin_service(payload: AdminUserCreate, db: AsyncSession):
     await db.refresh(admin)
 
     otp = await send_otp_service(admin.email, db)
-    if otp["status"] == False:
+    if not otp["status"]:
         raise HTTPException(status_code=400, detail=otp["message"])
 
     return {admin: admin, "status": True, "message": "Admin created successfully"}

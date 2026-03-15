@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES : int
 
     SECRET_KEY : str
-    CORS_ORIGINS : List[str]
+    CORS_ORIGINS : str
 
 
     EMAIL_HOST : str

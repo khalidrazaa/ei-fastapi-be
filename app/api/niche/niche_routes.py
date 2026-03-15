@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
+from app.db.models.niche import Niche
 from app.db.session import get_db
 from app.schemas.niche import (
     NicheCreate,
     NicheOut,
+    NicheUpdate,
 )
 from app.services.niche_service import NicheService
 
@@ -56,3 +58,17 @@ async def delete_keyword(
 ):
     await service.delete_keyword(db, niche_id, keyword_id)
     return {"detail": "Keyword deleted"}
+
+@router.patch("/{niche_id}")
+async def update_niche(
+    niche_id: int,
+    data: NicheUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    niche = await service.update_niche(db, niche_id, data)
+
+    if data.is_active is not None:
+        niche.is_active = data.is_active
+
+    db.commit()
+    return niche

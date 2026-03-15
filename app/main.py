@@ -4,13 +4,14 @@ from app.api.router import router as api_router
 from app.db.session import engine
 import asyncio
 import os
+from app.core.config import settings
 from app.db.mongodb import get_mongo_db
 from app.scheduler.scheduler import start_scheduler
 
 app = FastAPI()
 
 # ✅ Add CORS Middleware here
-origins = os.getenv("CORS_ORIGINS", "")
+origins = settings.CORS_ORIGINS
 allow_origins = [o.strip() for o in origins.split(",") if o.strip()]
 
 app.add_middleware(

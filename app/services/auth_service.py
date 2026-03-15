@@ -15,6 +15,8 @@ def generate_otp() -> str:
 
 
 async def send_otp_service(email: str, db: AsyncSession):
+
+    print(f"Attempting to send OTP to {email}")
     try:
         result = await db.execute(select(AdminUser).where(AdminUser.email == email))
         user = result.scalars().first()
