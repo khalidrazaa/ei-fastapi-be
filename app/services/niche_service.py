@@ -42,3 +42,16 @@ class NicheService:
             return
 
         await niche_query.delete_keyword(db, keyword)
+
+    async def update_niche(self, db: AsyncSession, niche_id: int, data):
+
+        niche = await niche_query.get_niche_by_id(db, niche_id)
+
+        if not niche:
+            return
+
+        return await niche_query.update_niche(
+            db,
+            niche,
+            is_active=data.is_active
+        )

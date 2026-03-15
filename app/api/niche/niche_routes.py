@@ -59,13 +59,13 @@ async def delete_keyword(
     await service.delete_keyword(db, niche_id, keyword_id)
     return {"detail": "Keyword deleted"}
 
-@router.patch("/niches/{niche_id}")
+@router.patch("/{niche_id}")
 async def update_niche(
     niche_id: int,
     data: NicheUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    niche = await db.get(Niche, niche_id)
+    niche = await service.update_niche(db, niche_id, data)
 
     if data.is_active is not None:
         niche.is_active = data.is_active
