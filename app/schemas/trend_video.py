@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional
 from datetime import datetime
 
@@ -13,6 +13,7 @@ class TrendVideoBase(BaseModel):
     comment_count: Optional[int] = None
     published_at: datetime
     virality_score: float
+    thumbnail_url: str
 
 
 class TrendVideoCreate(TrendVideoBase):
@@ -22,6 +23,11 @@ class TrendVideoCreate(TrendVideoBase):
 class TrendVideoOut(TrendVideoBase):
     id: int
     scanned_at: datetime
+
+    @computed_field
+    @property
+    def youtube_url(self) -> str:
+        return f"https://www.youtube.com/watch?v={self.youtube_video_id}"
 
     class Config:
         from_attributes = True

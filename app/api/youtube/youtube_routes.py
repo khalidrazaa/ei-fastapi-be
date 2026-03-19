@@ -77,7 +77,12 @@ async def scan_youtube(keyword_id: int, db: AsyncSession = Depends(get_db),):
 
 
 @router.get("/keywords/{keyword_id}/videos", response_model=list[TrendVideoOut],)
-async def get_keyword_videos(keyword_id: int, db: AsyncSession = Depends(get_db),):
+async def get_keyword_videos(keyword_id: int,
+                            db: AsyncSession = Depends(get_db),
+                            sort: str = "score",
+                            min_views: int = 0,
+                            days: int | None=None
+                            ):
     """
     Get stored YouTube videos for a keyword.
     """
@@ -85,6 +90,9 @@ async def get_keyword_videos(keyword_id: int, db: AsyncSession = Depends(get_db)
     videos = await get_videos_by_keyword(
         db=db,
         keyword_id=keyword_id,
+        sort=sort,
+        min_views=min_views,
+        days=days,
     )
 
     return videos or []
