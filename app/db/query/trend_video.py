@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.db.models.trend_video import TrendVideo
+from app.db.models.niche import NicheKeyword
 
 
 async def create_or_update(
@@ -148,3 +149,25 @@ async def get_recent_videos(db: AsyncSession, hours=24):
     )
 
     return result.all()
+
+async def get_videos_by_niche(
+    db: AsyncSession,
+    niche_id: int,
+    sort: str = "score",
+):
+    query = (
+        select(TrendVideo)
+        .join(NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id)
+        .where(NicheKeyword.niche_id == niche_id)
+    )
+
+    # sorting
+    if sort == "views":
+        query = query.order_by(TrendVideo.view_count.desc())
+    elif sort == "recent":
+        query = query.order_by(TrendVideo.published_at.desc())
+    else:
+        query = query.order_by(TrendVideo.virality_score.desc())
+
+    result = await db.execute(query)
+    return result.scalars().all()

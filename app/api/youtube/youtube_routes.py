@@ -9,6 +9,7 @@ from app.clients.youtube_client import YouTubeClient
 from app.schemas.trend_video import TrendVideoOut
 from app.schemas.youtube import YouTubeScanResponse
 from app.db.query.trend_video import get_videos_by_keyword
+from app.services.trend_video import get_videos_by_niche
 from app.core.config import settings
 
 
@@ -29,7 +30,7 @@ async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_d
             youtube_client=youtube_client,
         )
 
-        videos_saved = await service.scan_niche(niche_id)
+        videos_saved = await service.scan_youtube_niche(niche_id)
 
         return {
             "niche_id": niche_id,
@@ -42,9 +43,6 @@ async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_d
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
 
 @router.post("/keywords/{keyword_id}/scan-youtube", response_model=YouTubeScanResponse,)
 async def scan_youtube(keyword_id: int, db: AsyncSession = Depends(get_db),):
@@ -96,3 +94,11 @@ async def get_keyword_videos(keyword_id: int,
     )
 
     return videos or []
+
+@router.get("/niches/{niche_id}/videos", response_model=list[TrendVideoOut])
+async def get_niche_videos(
+    niche_id: int,
+    sort: str = "score",
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_videos_by_niche(db, niche_id, sort)
