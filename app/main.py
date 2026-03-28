@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Keep the versioned API as the primary surface, and expose an unversioned
 app.include_router(api_router, prefix="/v1/api")
 
 
