@@ -40,6 +40,8 @@ class TrendVideo(Base):
 
     virality_score = Column(Float, nullable=False)
 
+    thumbnail_url = Column(String, nullable=False)
+
     scanned_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

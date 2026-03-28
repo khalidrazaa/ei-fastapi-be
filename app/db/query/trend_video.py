@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.db.models.trend_video import TrendVideo
+from app.db.models.niche import NicheKeyword
 
 
 async def create_or_update(
@@ -28,6 +29,14 @@ async def create_or_update(
 
     # 🔥 Convert YouTube ISO string → datetime
     published_at_raw = snippet.get("publishedAt")
+
+    thumbs = snippet.get("thumbnails", {})
+
+    thumbnail_url = (
+        thumbs.get("high", {}).get("url")
+        or thumbs.get("medium", {}).get("url")
+        or thumbs.get("default", {}).get("url")
+    )
 
     published_at = None
     if published_at_raw:
@@ -63,6 +72,7 @@ async def create_or_update(
         existing.comment_count = comment_count
         existing.virality_score = score
         existing.published_at = published_at
+        existing.thumbnail_url = thumbnail_url
 
         await db.commit()
         await db.refresh(existing)
@@ -79,6 +89,7 @@ async def create_or_update(
         comment_count=comment_count,
         published_at=published_at,
         virality_score=score,
+        thumbnail_url=thumbnail_url,
     )
 
     db.add(new_video)
@@ -97,12 +108,27 @@ async def get_recent_titles(db:AsyncSession, limit=500):
 
     return [row[0] for row in result.all()]
 
-async def get_videos_by_keyword(db: AsyncSession, keyword_id: int):
-    result = await db.execute(
-        select(TrendVideo)
-        .where(TrendVideo.keyword_id == keyword_id)
-        .order_by(TrendVideo.published_at.desc())
+async def get_videos_by_keyword(db: AsyncSession,
+                                 keyword_id: int,
+                                 sort: str = "score",
+                                 min_views: int = 0,
+                                 days: int | None=None,
+                                 ):
+    
+    query = select(TrendVideo).where(
+        TrendVideo.keyword_id == keyword_id,
+        TrendVideo.view_count >= min_views
     )
+
+    # 🔽 Sorting
+    if sort == "views":
+        query = query.order_by(TrendVideo.view_count.desc())
+    elif sort == "recent":
+        query = query.order_by(TrendVideo.published_at.desc())
+    else:  # default = score
+        query = query.order_by(TrendVideo.virality_score.desc())
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -123,3 +149,25 @@ async def get_recent_videos(db: AsyncSession, hours=24):
     )
 
     return result.all()
+
+async def get_videos_by_niche(
+    db: AsyncSession,
+    niche_id: int,
+    sort: str = "score",
+):
+    query = (
+        select(TrendVideo)
+        .join(NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id)
+        .where(NicheKeyword.niche_id == niche_id)
+    )
+
+    # sorting
+    if sort == "views":
+        query = query.order_by(TrendVideo.view_count.desc())
+    elif sort == "recent":
+        query = query.order_by(TrendVideo.published_at.desc())
+    else:
+        query = query.order_by(TrendVideo.virality_score.desc())
+
+    result = await db.execute(query)
+    return result.scalars().all()
