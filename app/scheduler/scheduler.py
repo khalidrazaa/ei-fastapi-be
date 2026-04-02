@@ -17,7 +17,7 @@ def start_scheduler():
     scheduler.add_job(
         scan_all_niches,
         trigger=IntervalTrigger(hours=3),  # run every 3 hours
-        # trigger=IntervalTrigger(minutes=1),  # run every 3 minutes (for testing, change to hours=3),
+        #trigger=IntervalTrigger(minutes=1),  # run every 3 minutes (for testing, change to hours=3),
         id="scan_all_niches",
         replace_existing=True,
     )

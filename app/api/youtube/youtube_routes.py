@@ -35,7 +35,6 @@ async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_d
         return {
             "niche_id": niche_id,
             "videos_saved": videos_saved,
-            "videos": [],
         }
 
     except ValueError as e:

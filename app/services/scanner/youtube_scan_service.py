@@ -34,15 +34,15 @@ class YouTubeScanService:
         if not keywords:
             raise ValueError("No keywords found for this niche")
     
-        tasks = [
-            self.scan_keyword(keyword.id)
-            for keyword in keywords
-        ]
-    
-        results = await asyncio.gather(*tasks)
-    
-        total_videos_saved = sum(results)
-    
+        total_videos_saved = 0
+        
+        for keyword in keywords:
+            try:
+                result = await self.scan_keyword(keyword.id)
+                total_videos_saved += result
+            except Exception as e:
+                print(f"Keyword failed {keyword.id}: {str(e)}")
+        
         return total_videos_saved
 
     async def scan_keyword(self, keyword_id: int) -> int:

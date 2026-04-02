@@ -70,5 +70,5 @@ async def update_niche(
     if data.is_active is not None:
         niche.is_active = data.is_active
 
-    db.commit()
+    await db.commit()
     return niche
