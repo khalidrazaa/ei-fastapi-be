@@ -15,7 +15,7 @@ from app.core.config import settings
 
 router = APIRouter()
 
-@router.get("/niches/{niche_id}/scan-youtube", response_model=YouTubeScanResponse,)
+@router.get("/niches/{niche_id}/scan-youtube",)
 async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_db),):
     """
     Scan YouTube for all keywords in a niche and store intelligence.
