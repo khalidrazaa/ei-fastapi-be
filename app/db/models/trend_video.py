@@ -23,7 +23,7 @@ class TrendVideo(Base):
     keyword_id = Column(
         Integer,
         ForeignKey("niche_keywords.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -48,14 +48,15 @@ class TrendVideo(Base):
         nullable=False,
     )
 
-    source = Column(String, nullable=False, default="youtube")
+    source = Column(String, nullable=False, default="NICHE")
+    region_code = Column(String, nullable=True)
     
     # Relationship to keyword
     keyword = relationship("NicheKeyword")
 
     __table_args__ = (
         UniqueConstraint(
-            "keyword_id",
+            "region_code",
             "youtube_video_id",
             name="uq_keyword_video",
         ),

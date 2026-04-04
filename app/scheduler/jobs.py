@@ -7,6 +7,7 @@ from app.db.query.discovered_trend import upsert_trend
 
 from app.services.scanner.niche_scanner import NicheScanner
 from app.services.analyzer.trend_analyzer import TrendAnalyzer
+from app.services.scanner.youtube_scan_service import YouTubeScanService
 
 from app.clients.youtube_client import YouTubeClient
 from app.core.config import settings
@@ -97,9 +98,9 @@ async def discover_trends():
 
 
 # ------------------------------------------------
-# JOB 3 — Scan trending videos by region
+# JOB 3 — Scan popular videos by region
 # ------------------------------------------------
-async def scan_trending_videos():
+async def scan_popular_videos():
     """
     Fetch most popular videos by region and store them.
     This becomes the primary discovery pipeline.
@@ -111,83 +112,24 @@ async def scan_trending_videos():
 
     async with SessionLocal() as db:
 
-        total_saved = 0
+        scanner = YouTubeScanService(
+            db_session=db,
+            youtube_client=youtube_client,
+        )
+
+        total_processed = 0
 
         for region in REGIONS:
             try:
-                print(f"🌍 Scanning trending videos for region: {region}")
+                print(f"🌍 Scanning popular for region: {region}")
 
-                videos = await youtube_client.get_trending_videos(
-                    region_code=region,
-                    max_results=50
-                )
-
-                if not videos:
-                    print(f"⚠️ No videos found for region {region}")
-                    continue
-
-                for video in videos:
-                    try:
-                        # 👇 Extract fields (adjust based on your client response)
-                        youtube_id = video["id"]
-                        snippet = video["snippet"]
-                        stats = video.get("statistics", {})
-
-                        title = snippet["title"]
-                        channel = snippet["channelTitle"]
-                        published_at = snippet["publishedAt"]
-                        category_id = snippet.get("categoryId")
-
-                        views = int(stats.get("viewCount", 0))
-                        likes = int(stats.get("likeCount", 0))
-                        comments = int(stats.get("commentCount", 0))
-
-                        # 👇 Compute derived signals
-                        # (you can move this into a util later)
-                        from datetime import datetime, timezone
-
-                        published_dt = datetime.fromisoformat(
-                            published_at.replace("Z", "+00:00")
-                        )
-
-                        age_hours = max(
-                            (datetime.now(timezone.utc) - published_dt).total_seconds() / 3600,
-                            1
-                        )
-
-                        velocity = views / age_hours
-                        engagement = (likes + comments) / views if views > 0 else 0
-                        viral_score = (views * engagement) / age_hours
-
-                        # 👇 Reuse your existing create_or_update
-                        await create_or_update(
-                            db=db,
-                            youtube_id=youtube_id,
-                            title=title,
-                            channel_title=channel,
-                            views=views,
-                            likes=likes,
-                            comments=comments,
-                            published_at=published_dt,
-                            category_id=category_id,
-
-                            # NEW fields (you add in model)
-                            region=region,
-                            source_type="trending",
-                            velocity=velocity,
-                            engagement=engagement,
-                            viral_score=viral_score,
-                        )
-
-                        total_saved += 1
-
-                    except Exception as inner_e:
-                        print(f"❌ Failed video save: {str(inner_e)}")
+                count = await scanner.scan_trending(region)
+                total_processed += count
 
             except Exception as e:
-                print(f"❌ Region scan failed {region}: {str(e)}")
+                print(f"❌ Region failed {region}: {str(e)}")
 
-        # ✅ SINGLE COMMIT (important fix from your earlier error)
+        # single commit after all regions
         await db.commit()
 
-        print(f"✅ Trending scan complete. Total saved: {total_saved}")
+        print(f"✅ Popular videos scan complete. Total processed: {total_processed}")

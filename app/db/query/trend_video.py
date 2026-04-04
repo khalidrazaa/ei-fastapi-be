@@ -10,13 +10,16 @@ from app.db.models.niche import NicheKeyword
 
 async def create_or_update(
     db: AsyncSession,
-    keyword_id: int,
+    keyword_id: int|None,
     video_data: dict,
     score: float,
+    source: str,
+    region_code: str | None = None,
 ) -> TrendVideo:
     """
-    Insert new trend video or update existing one.
-    Uniqueness: keyword_id + youtube_video_id
+    Uniqueness:
+        - POPULAR → (youtube_video_id + region_code)
+        - NICHE → (youtube_video_id + keyword_id)
     """
 
     youtube_video_id = video_data["id"]
@@ -54,13 +57,21 @@ async def create_or_update(
         int(stats.get("commentCount")) if stats.get("commentCount") else None
     )
 
-    # 🔎 Check if video already exists
-    result = await db.execute(
-        select(TrendVideo).where(
-            TrendVideo.keyword_id == keyword_id,
-            TrendVideo.youtube_video_id == youtube_video_id,
+    if source == "POPULAR":
+        result = await db.execute(
+            select(TrendVideo)
+            .where(
+                TrendVideo.youtube_video_id == youtube_video_id,
+                TrendVideo.region_code == region_code,
+            )
         )
-    )
+    else:
+        result = await db.execute(
+            select(TrendVideo).where(
+                TrendVideo.keyword_id == keyword_id,
+                TrendVideo.youtube_video_id == youtube_video_id,
+            )
+        )
 
     existing = result.scalar_one_or_none()
 
@@ -73,10 +84,13 @@ async def create_or_update(
         existing.virality_score = score
         existing.published_at = published_at
         existing.thumbnail_url = thumbnail_url
+        existing.source = source
+        existing.region_code = region_code
 
         await db.commit()
         await db.refresh(existing)
         return existing
+
 
     # ➕ Create new record
     new_video = TrendVideo(
@@ -90,6 +104,8 @@ async def create_or_update(
         published_at=published_at,
         virality_score=score,
         thumbnail_url=thumbnail_url,
+        source=source,
+        region_code=region_code,
     )
 
     db.add(new_video)
