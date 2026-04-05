@@ -13,7 +13,7 @@ async def create_or_update(
     keyword_id: int|None,
     video_data: dict,
     score: float,
-    source: str,
+    source: str = None,
     region_code: str | None = None,
 ) -> TrendVideo:
     """

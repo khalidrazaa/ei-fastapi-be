@@ -111,13 +111,23 @@ class YouTubeScanService:
     # INTERNAL METHODS
     # ---------------------------------------------------
 
-    def _extract_video_ids(self, search_data: dict) -> List[str]:
-        items = search_data.get("items", [])
-        return [
-            item["id"]["videoId"]
-            for item in items
-            if "videoId" in item.get("id", {})
-        ]
+    def _extract_video_ids(self, data: dict) -> List[str]:
+        items = data.get("items", [])
+    
+        video_ids = []
+    
+        for item in items:
+            vid = item.get("id")
+    
+            # Case 1: search API
+            if isinstance(vid, dict):
+                vid = vid.get("videoId")
+    
+            # Case 2: trending API
+            if isinstance(vid, str):
+                video_ids.append(vid)
+    
+        return video_ids
 
     def _map_channel_subscribers(self, channel_data: dict) -> Dict[str, int]:
         """
@@ -188,17 +198,19 @@ class YouTubeScanService:
     # ---------------------------------------------------
     # TRENDING SCAN (REGION BASED)
     # ---------------------------------------------------
-    async def scan_trending(self, region_code: str) -> int:
+    async def scan_popular(self, region_code: str, max_results: int = 2):
         """
-        Scan trending videos for a region.
+        Scan popular videos for a region.
         Returns number of processed videos.
         """
 
         # 1️⃣ Fetch trending videos
         trending_data = await self.youtube.get_trending_videos(
             region_code=region_code,
-            max_results=25,
+            max_results=max_results,
         )
+
+        print("Trending videos fetched, getting vidoes ids")
 
         video_ids = self._extract_video_ids(trending_data)
         if not video_ids:
@@ -207,7 +219,11 @@ class YouTubeScanService:
         # 2️⃣ Fetch full video details
         video_details = await self.youtube.get_video_details(video_ids)
 
+        print("Trending video details fetched")
+
         items = video_details.get("items", [])
+
+        print("tsting get")
         if not items:
             return 0
 
@@ -224,8 +240,10 @@ class YouTubeScanService:
 
         for video in items:
             channel_id = video["snippet"]["channelId"]
-            subs = subscriber_map.get(channel_id, 1)
 
+            print("testing for loops")
+            subs = subscriber_map.get(channel_id, 1)
+            print("testing subs") 
             score = self._calculate_velocity(video, subs)
 
             # 🔑 No keyword_id here → pass None or special flag

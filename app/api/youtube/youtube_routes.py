@@ -12,6 +12,8 @@ from app.db.query.trend_video import get_videos_by_keyword
 from app.services.trend_video import get_videos_by_niche
 from app.core.config import settings
 
+from app.scheduler.jobs import scan_popular_videos
+
 
 router = APIRouter()
 
@@ -101,3 +103,9 @@ async def get_niche_videos(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_videos_by_niche(db, niche_id, sort)
+
+
+@router.get("/debug-trending")
+async def debug_trending():
+    await scan_popular_videos()
+    return {"status": "done"}

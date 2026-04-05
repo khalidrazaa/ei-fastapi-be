@@ -37,8 +37,8 @@ def start_scheduler():
     scheduler.add_job(
         scan_popular_videos,
         trigger=IntervalTrigger(hours=5),
-        # trigger=IntervalTrigger(minutes=2),
-        next_run_time= datetime.now() + timedelta(minutes=15),
+        #trigger=IntervalTrigger(minutes=1),
+        #next_run_time= datetime.now() + timedelta(minutes=15),
         id="scan_popular_videos",
         replace_existing=True
     )

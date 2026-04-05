@@ -76,3 +76,30 @@ class YouTubeClient:
             response = await client.get(url, params=params)
             response.raise_for_status()
             return response.json()
+
+
+    async def get_trending_videos(
+        self,
+        region_code: str,
+        max_results: int = 5,
+    ) -> dict:
+        """
+        Fetch most popular (trending) videos for a region.
+        Uses YouTube 'videos' endpoint with chart=mostPopular.
+        """
+    
+        url = f"{self.BASE_URL}/videos"
+    
+        params = {
+            "part": "snippet,statistics",
+            "chart": "mostPopular",
+            "regionCode": region_code,
+            "maxResults": max_results,
+            "key": self.api_key,
+        }
+    
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            print("Trending videos fetched successfully",response.json())
+            return response.json()

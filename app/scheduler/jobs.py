@@ -106,7 +106,8 @@ async def scan_popular_videos():
     This becomes the primary discovery pipeline.
     """
 
-    REGIONS = ["US", "IN", "CA", "AU", "GB"]
+    #REGIONS = ["US", "IN", "CA", "AU", "GB"]
+    REGIONS = ["US"]
 
     youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
 
@@ -120,10 +121,8 @@ async def scan_popular_videos():
         total_processed = 0
 
         for region in REGIONS:
-            try:
-                print(f"🌍 Scanning popular for region: {region}")
-
-                count = await scanner.scan_trending(region)
+            try:                
+                count = await scanner.scan_popular(region)
                 total_processed += count
 
             except Exception as e:
