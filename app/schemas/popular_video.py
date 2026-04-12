@@ -4,8 +4,9 @@ from typing import Optional
 from pydantic import BaseModel, computed_field
 
 
-class TrendVideoBase(BaseModel):
-    keyword_id: int
+class PopularVideoOut(BaseModel):
+    id: int
+    keyword_id: Optional[int] = None
     youtube_video_id: str
     title: str
     channel_title: str
@@ -13,17 +14,11 @@ class TrendVideoBase(BaseModel):
     like_count: Optional[int] = None
     comment_count: Optional[int] = None
     published_at: datetime
+    scanned_at: datetime
     virality_score: float
     thumbnail_url: str
-
-
-class TrendVideoCreate(TrendVideoBase):
-    pass
-
-
-class TrendVideoOut(TrendVideoBase):
-    id: int
-    scanned_at: datetime
+    source: str
+    region_code: Optional[str] = None
 
     @computed_field
     @property

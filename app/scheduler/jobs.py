@@ -7,6 +7,7 @@ from app.db.query.discovered_trend import upsert_trend
 
 from app.services.scanner.niche_scanner import NicheScanner
 from app.services.analyzer.trend_analyzer import TrendAnalyzer
+from app.services.scanner.youtube_scan_service import YouTubeScanService
 
 from app.clients.youtube_client import YouTubeClient
 from app.core.config import settings
@@ -94,3 +95,40 @@ async def discover_trends():
             saved += 1
 
         print(f"✅ Discovered {len(trends)} trends, saved {saved}")
+
+
+# ------------------------------------------------
+# JOB 3 — Scan popular videos by region
+# ------------------------------------------------
+async def scan_popular_videos():
+    """
+    Fetch most popular videos by region and store them.
+    This becomes the primary discovery pipeline.
+    """
+
+    #REGIONS = ["US", "IN", "CA", "AU", "GB"]
+    REGIONS = ["US"]
+
+    youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
+
+    async with SessionLocal() as db:
+
+        scanner = YouTubeScanService(
+            db_session=db,
+            youtube_client=youtube_client,
+        )
+
+        total_processed = 0
+
+        for region in REGIONS:
+            try:                
+                count = await scanner.scan_popular(region)
+                total_processed += count
+
+            except Exception as e:
+                print(f"❌ Region failed {region}: {str(e)}")
+
+        # single commit after all regions
+        await db.commit()
+
+        print(f"✅ Popular videos scan complete. Total processed: {total_processed}")

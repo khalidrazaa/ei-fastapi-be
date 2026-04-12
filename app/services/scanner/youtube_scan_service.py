@@ -34,15 +34,15 @@ class YouTubeScanService:
         if not keywords:
             raise ValueError("No keywords found for this niche")
     
-        tasks = [
-            self.scan_keyword(keyword.id)
-            for keyword in keywords
-        ]
-    
-        results = await asyncio.gather(*tasks)
-    
-        total_videos_saved = sum(results)
-    
+        total_videos_saved = 0
+        
+        for keyword in keywords:
+            try:
+                result = await self.scan_keyword(keyword.id)
+                total_videos_saved += result
+            except Exception as e:
+                print(f"Keyword failed {keyword.id}: {str(e)}")
+        
         return total_videos_saved
 
     async def scan_keyword(self, keyword_id: int) -> int:
@@ -111,13 +111,23 @@ class YouTubeScanService:
     # INTERNAL METHODS
     # ---------------------------------------------------
 
-    def _extract_video_ids(self, search_data: dict) -> List[str]:
-        items = search_data.get("items", [])
-        return [
-            item["id"]["videoId"]
-            for item in items
-            if "videoId" in item.get("id", {})
-        ]
+    def _extract_video_ids(self, data: dict) -> List[str]:
+        items = data.get("items", [])
+    
+        video_ids = []
+    
+        for item in items:
+            vid = item.get("id")
+    
+            # Case 1: search API
+            if isinstance(vid, dict):
+                vid = vid.get("videoId")
+    
+            # Case 2: trending API
+            if isinstance(vid, str):
+                video_ids.append(vid)
+    
+        return video_ids
 
     def _map_channel_subscribers(self, channel_data: dict) -> Dict[str, int]:
         """
@@ -184,3 +194,68 @@ class YouTubeScanService:
         ]
 
         return phrases
+    
+    # ---------------------------------------------------
+    # TRENDING SCAN (REGION BASED)
+    # ---------------------------------------------------
+    async def scan_popular(self, region_code: str, max_results: int = 2):
+        """
+        Scan popular videos for a region.
+        Returns number of processed videos.
+        """
+
+        # 1️⃣ Fetch trending videos
+        trending_data = await self.youtube.get_trending_videos(
+            region_code=region_code,
+            max_results=max_results,
+        )
+
+        print("Trending videos fetched, getting vidoes ids")
+
+        video_ids = self._extract_video_ids(trending_data)
+        if not video_ids:
+            return 0
+
+        # 2️⃣ Fetch full video details
+        video_details = await self.youtube.get_video_details(video_ids)
+
+        print("Trending video details fetched")
+
+        items = video_details.get("items", [])
+
+        print("tsting get")
+        if not items:
+            return 0
+
+        # 3️⃣ Collect channel IDs
+        channel_ids = list(
+            {item["snippet"]["channelId"] for item in items}
+        )
+
+        channel_data = await self.youtube.get_channel_details(channel_ids)
+        subscriber_map = self._map_channel_subscribers(channel_data)
+
+        # 4️⃣ Process & store
+        processed = 0
+
+        for video in items:
+            channel_id = video["snippet"]["channelId"]
+
+            print("testing for loops")
+            subs = subscriber_map.get(channel_id, 1)
+            print("testing subs") 
+            score = self._calculate_velocity(video, subs)
+
+            # 🔑 No keyword_id here → pass None or special flag
+            await create_or_update(
+                db=self.db,
+                keyword_id=None,  # important difference
+                video_data=video,
+                score=score,
+                region_code=region_code,
+                source="POPULAR",
+            )
+
+            processed += 1
+
+        return processed
