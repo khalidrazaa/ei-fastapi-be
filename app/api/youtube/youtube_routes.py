@@ -1,32 +1,31 @@
-# app/api/youtube_route.py
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.clients.youtube_client import YouTubeClient
+from app.core.config import settings
+from app.db.query.trend_video import get_videos_by_keyword
+from app.db.session import get_db
+from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import TrendVideoOut
 from app.schemas.youtube import YouTubeScanResponse
-from app.db.query.trend_video import get_videos_by_keyword
-from app.services.trend_video import get_videos_by_niche
-from app.core.config import settings
-
 from app.scheduler.jobs import scan_popular_videos
-
+from app.services.scanner.youtube_scan_service import YouTubeScanService
+from app.services.trend_video import get_popular_videos, get_videos_by_niche
 
 router = APIRouter()
 
-@router.get("/niches/{niche_id}/scan-youtube",)
-async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_db),):
+
+@router.get("/niches/{niche_id}/scan-youtube")
+async def scan_youtube_for_niche(
+    niche_id: int,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Scan YouTube for all keywords in a niche and store intelligence.
     """
 
     try:
-
         youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
-
         service = YouTubeScanService(
             db_session=db,
             youtube_client=youtube_client,
@@ -38,23 +37,23 @@ async def scan_youtube_for_niche(niche_id: int, db: AsyncSession = Depends(get_d
             "niche_id": niche_id,
             "videos_saved": videos_saved,
         }
-
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/keywords/{keyword_id}/scan-youtube", response_model=YouTubeScanResponse,)
-async def scan_youtube(keyword_id: int, db: AsyncSession = Depends(get_db),):
+
+@router.post("/keywords/{keyword_id}/scan-youtube", response_model=YouTubeScanResponse)
+async def scan_youtube(
+    keyword_id: int,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Scan YouTube for a given keyword and store intelligence.
     """
 
     try:
-
         youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
-
         service = YouTubeScanService(
             db_session=db,
             youtube_client=youtube_client,
@@ -67,21 +66,20 @@ async def scan_youtube(keyword_id: int, db: AsyncSession = Depends(get_db),):
             "videos_saved": videos_saved,
             "videos": [],
         }
-
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/keywords/{keyword_id}/videos", response_model=list[TrendVideoOut],)
-async def get_keyword_videos(keyword_id: int,
-                            db: AsyncSession = Depends(get_db),
-                            sort: str = "score",
-                            min_views: int = 0,
-                            days: int | None=None
-                            ):
+@router.get("/keywords/{keyword_id}/videos", response_model=list[TrendVideoOut])
+async def get_keyword_videos(
+    keyword_id: int,
+    db: AsyncSession = Depends(get_db),
+    sort: str = "score",
+    min_views: int = 0,
+    days: int | None = None,
+):
     """
     Get stored YouTube videos for a keyword.
     """
@@ -96,13 +94,45 @@ async def get_keyword_videos(keyword_id: int,
 
     return videos or []
 
+
 @router.get("/niches/{niche_id}/videos", response_model=list[TrendVideoOut])
-async def get_niche_videos(
+async def get_niche_videos_route(
     niche_id: int,
     sort: str = "score",
+    min_views: int = 0,
+    days: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_videos_by_niche(db, niche_id, sort)
+    return await get_videos_by_niche(
+        db=db,
+        niche_id=niche_id,
+        sort=sort,
+        min_views=min_views,
+        days=days,
+    )
+
+
+@router.get("/popular/videos", response_model=list[PopularVideoOut])
+async def get_popular_videos_route(
+    sort: str = "score",
+    min_views: int = 0,
+    days: int | None = None,
+    region_code: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_popular_videos(
+        db=db,
+        sort=sort,
+        min_views=min_views,
+        days=days,
+        region_code=region_code,
+    )
+
+
+@router.post("/popular/scan")
+async def trigger_popular_scan():
+    await scan_popular_videos()
+    return {"status": "done"}
 
 
 @router.get("/debug-trending")
