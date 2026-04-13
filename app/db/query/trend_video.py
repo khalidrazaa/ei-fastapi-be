@@ -7,6 +7,20 @@ from app.db.models.niche import NicheKeyword
 from app.db.models.trend_video import TrendVideo
 
 
+def _video_sort_key(video: TrendVideo, sort: str) -> tuple:
+    if sort == "views":
+        return (video.view_count, video.comment_count or 0, video.virality_score)
+    if sort == "comments":
+        return (video.comment_count or 0, video.view_count, video.virality_score)
+    if sort == "recent":
+        return (
+            video.published_at.timestamp(),
+            video.virality_score,
+            video.view_count,
+        )
+    return (video.virality_score, video.comment_count or 0, video.view_count)
+
+
 def _apply_video_filters(
     query,
     *,
@@ -21,10 +35,22 @@ def _apply_video_filters(
         query = query.where(TrendVideo.published_at >= cutoff)
 
     if sort == "views":
-        return query.order_by(TrendVideo.view_count.desc())
+        return query.order_by(
+            TrendVideo.view_count.desc(),
+            TrendVideo.comment_count.desc(),
+        )
+    if sort == "comments":
+        return query.order_by(
+            TrendVideo.comment_count.desc(),
+            TrendVideo.view_count.desc(),
+        )
     if sort == "recent":
         return query.order_by(TrendVideo.published_at.desc())
-    return query.order_by(TrendVideo.virality_score.desc())
+    return query.order_by(
+        TrendVideo.virality_score.desc(),
+        TrendVideo.comment_count.desc(),
+        TrendVideo.view_count.desc(),
+    )
 
 
 async def create_or_update(
@@ -32,6 +58,7 @@ async def create_or_update(
     keyword_id: int | None,
     video_data: dict,
     score: float,
+    category_title: str = "Unknown",
     source: str | None = None,
     region_code: str | None = None,
 ) -> TrendVideo:
@@ -96,6 +123,7 @@ async def create_or_update(
         existing.virality_score = score
         existing.published_at = published_at
         existing.thumbnail_url = thumbnail_url
+        existing.category_title = category_title
         existing.source = source or existing.source
         existing.region_code = region_code
 
@@ -114,6 +142,7 @@ async def create_or_update(
         published_at=published_at,
         virality_score=score,
         thumbnail_url=thumbnail_url,
+        category_title=category_title,
         source=source or "NICHE",
         region_code=region_code,
     )
@@ -187,7 +216,18 @@ async def get_videos_by_niche(
     )
 
     result = await db.execute(query)
-    return result.scalars().all()
+
+    deduped_by_video_id: dict[str, TrendVideo] = {}
+    for video in result.scalars():
+        existing = deduped_by_video_id.get(video.youtube_video_id)
+        if existing is None or video.virality_score > existing.virality_score:
+            deduped_by_video_id[video.youtube_video_id] = video
+
+    return sorted(
+        deduped_by_video_id.values(),
+        key=lambda video: _video_sort_key(video, sort),
+        reverse=True,
+    )
 
 
 async def get_popular_videos(

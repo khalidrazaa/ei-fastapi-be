@@ -14,6 +14,7 @@ class YouTubeClient:
         max_results: int = 10,
         published_after: str | None = None,
         order: str = "viewCount",
+        region_code: str | None = None,
     ) -> Dict[str, Any]:
         """
         Search videos by keyword
@@ -31,6 +32,8 @@ class YouTubeClient:
 
         if published_after:
             params["publishedAfter"] = published_after
+        if region_code:
+            params["regionCode"] = region_code
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(url, params=params)
@@ -77,6 +80,26 @@ class YouTubeClient:
             response.raise_for_status()
             return response.json()
 
+    async def get_video_categories(
+        self,
+        region_code: str = "US",
+    ) -> Dict[str, Any]:
+        """
+        Get localized video categories for a region.
+        """
+        url = f"{self.BASE_URL}/videoCategories"
+
+        params = {
+            "part": "snippet",
+            "regionCode": region_code,
+            "key": self.api_key,
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+
 
     async def get_trending_videos(
         self,
@@ -101,5 +124,4 @@ class YouTubeClient:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            print("Trending videos fetched successfully",response.json())
             return response.json()

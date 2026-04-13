@@ -17,6 +17,7 @@ class PopularVideoOut(BaseModel):
     scanned_at: datetime
     virality_score: float
     thumbnail_url: str
+    category_title: str
     source: str
     region_code: Optional[str] = None
 

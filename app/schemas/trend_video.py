@@ -5,7 +5,7 @@ from pydantic import BaseModel, computed_field
 
 
 class TrendVideoBase(BaseModel):
-    keyword_id: int
+    keyword_id: Optional[int] = None
     youtube_video_id: str
     title: str
     channel_title: str
@@ -15,6 +15,7 @@ class TrendVideoBase(BaseModel):
     published_at: datetime
     virality_score: float
     thumbnail_url: str
+    category_title: str
 
 
 class TrendVideoCreate(TrendVideoBase):
