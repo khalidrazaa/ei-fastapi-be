@@ -2,7 +2,12 @@ from sqlalchemy import delete, select, update
 from app.db.models.idea_generated import TrendIdea
 
 
-async def create_trend_idea(db, trend_id: int, title: str):
+async def create_trend_idea(
+    db,
+    trend_id: int,
+    title: str,
+    score: float = 0,
+):
 
     # check if idea already exists
     result = await db.execute(
@@ -15,11 +20,15 @@ async def create_trend_idea(db, trend_id: int, title: str):
     existing = result.scalar_one_or_none()
 
     if existing:
+        existing.idea_score = score
+        await db.commit()
+        await db.refresh(existing)
         return existing.id
 
     idea = TrendIdea(
         trend_id=trend_id,
-        title=title
+        title=title,
+        idea_score=score,
     )
 
     db.add(idea)
