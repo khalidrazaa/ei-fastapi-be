@@ -118,14 +118,24 @@ async def get_popular_videos_route(
     min_views: int = 0,
     days: int | None = None,
     region_code: str | None = None,
+    source: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    
+    print("Getting popular videos with params:", {
+        "sort": sort,
+        "min_views": min_views,
+        "days": days,
+        "region_code": region_code,
+        "source": source,
+    })
     return await get_popular_videos(
         db=db,
         sort=sort,
         min_views=min_views,
         days=days,
         region_code=region_code,
+        source=source,
     )
 
 

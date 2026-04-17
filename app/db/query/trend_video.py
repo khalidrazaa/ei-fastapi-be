@@ -236,8 +236,13 @@ async def get_popular_videos(
     min_views: int = 0,
     days: int | None = None,
     region_code: str | None = None,
+    source: str | None = None,
 ):
-    query = select(TrendVideo).where(TrendVideo.source == "POPULAR")
+    print(f"Fetching popular videos with filters source: {source}")
+    query = select(TrendVideo)
+
+    if source and source != "all":
+        query = query.where(TrendVideo.source == source)
 
     if region_code:
         query = query.where(TrendVideo.region_code == region_code.upper())
