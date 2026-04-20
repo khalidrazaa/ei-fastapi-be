@@ -45,12 +45,12 @@ class YouTubeClient:
         video_ids: List[str],
     ) -> Dict[str, Any]:
         """
-        Get statistics + snippet for videos
+        Get detailed metadata for videos.
         """
         url = f"{self.BASE_URL}/videos"
 
         params = {
-            "part": "statistics,snippet",
+            "part": "statistics,snippet,contentDetails,status",
             "id": ",".join(video_ids),
             "key": self.api_key,
         }
@@ -65,12 +65,12 @@ class YouTubeClient:
         channel_ids: List[str],
     ) -> Dict[str, Any]:
         """
-        Get subscriber stats for channels
+        Get channel metadata and stats.
         """
         url = f"{self.BASE_URL}/channels"
 
         params = {
-            "part": "statistics",
+            "part": "snippet,statistics",
             "id": ",".join(channel_ids),
             "key": self.api_key,
         }

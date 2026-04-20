@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,11 +54,107 @@ def _apply_video_filters(
     )
 
 
+def _coerce_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _pick_thumbnail_url(thumbnails: dict[str, Any] | None) -> str | None:
+    if not thumbnails:
+        return None
+
+    for key in ("maxres", "standard", "high", "medium", "default"):
+        candidate = thumbnails.get(key, {})
+        url = candidate.get("url")
+        if url:
+            return url
+
+    return None
+
+
+def _build_trend_video_values(
+    *,
+    keyword_id: int | None,
+    video_data: dict[str, Any],
+    channel_data: dict[str, Any] | None,
+    score: float,
+    analytics: dict[str, Any] | None,
+    category_title: str,
+    source: str,
+    region_code: str | None,
+) -> dict[str, Any]:
+    snippet = video_data.get("snippet", {})
+    stats = video_data.get("statistics", {})
+
+    channel_snippet = (channel_data or {}).get("snippet", {})
+    channel_stats = (channel_data or {}).get("statistics", {})
+
+    published_at = _parse_datetime(snippet.get("publishedAt"))
+    channel_published_at = _parse_datetime(channel_snippet.get("publishedAt"))
+
+    values = {
+        "keyword_id": keyword_id,
+        "youtube_video_id": video_data["id"],
+        "youtube_channel_id": snippet.get("channelId"),
+        "title": snippet.get("title") or "",
+        "description": snippet.get("description"),
+        "channel_title": snippet.get("channelTitle") or "",
+        "channel_custom_url": channel_snippet.get("customUrl"),
+        "channel_description": channel_snippet.get("description"),
+        "channel_country": channel_snippet.get("country"),
+        "view_count": _coerce_int(stats.get("viewCount")) or 0,
+        "like_count": _coerce_int(stats.get("likeCount")),
+        "comment_count": _coerce_int(stats.get("commentCount")),
+        "subscriber_count": _coerce_int(channel_stats.get("subscriberCount")),
+        "channel_view_count": _coerce_int(channel_stats.get("viewCount")),
+        "channel_video_count": _coerce_int(channel_stats.get("videoCount")),
+        "hidden_subscriber_count": channel_stats.get("hiddenSubscriberCount"),
+        "published_at": published_at,
+        "channel_published_at": channel_published_at,
+        "virality_score": score,
+        "speed_score": analytics.get("speed_score") if analytics else None,
+        "breakout_score": analytics.get("breakout_score") if analytics else None,
+        "engagement_score": analytics.get("engagement_score") if analytics else None,
+        "freshness_score": analytics.get("freshness_score") if analytics else None,
+        "confidence_score": analytics.get("confidence_score") if analytics else None,
+        "trend_stage": analytics.get("trend_stage") if analytics else None,
+        "thumbnail_url": _pick_thumbnail_url(snippet.get("thumbnails")) or "",
+        "channel_thumbnail_url": _pick_thumbnail_url(channel_snippet.get("thumbnails")),
+        "category_id": snippet.get("categoryId"),
+        "category_title": category_title,
+        "source": source,
+        "region_code": region_code,
+        "video_payload": video_data,
+        "channel_payload": channel_data,
+    }
+
+    if values["published_at"] is None:
+        raise ValueError(
+            f"Video {values['youtube_video_id']} is missing publishedAt and cannot be stored."
+        )
+
+    return values
+
+
 async def create_or_update(
     db: AsyncSession,
     keyword_id: int | None,
     video_data: dict,
     score: float,
+    analytics: dict[str, Any] | None = None,
+    channel_data: dict | None = None,
     category_title: str = "Unknown",
     source: str | None = None,
     region_code: str | None = None,
@@ -68,40 +165,24 @@ async def create_or_update(
         - NICHE -> (youtube_video_id + keyword_id)
     """
 
-    youtube_video_id = video_data["id"]
-
-    snippet = video_data.get("snippet", {})
-    stats = video_data.get("statistics", {})
-
-    title = snippet.get("title", "")
-    channel_title = snippet.get("channelTitle", "")
-
-    published_at_raw = snippet.get("publishedAt")
-    thumbs = snippet.get("thumbnails", {})
-
-    thumbnail_url = (
-        thumbs.get("high", {}).get("url")
-        or thumbs.get("medium", {}).get("url")
-        or thumbs.get("default", {}).get("url")
+    resolved_source = source or "NICHE"
+    values = _build_trend_video_values(
+        keyword_id=keyword_id,
+        video_data=video_data,
+        channel_data=channel_data,
+        score=score,
+        analytics=analytics,
+        category_title=category_title,
+        source=resolved_source,
+        region_code=region_code if resolved_source == "POPULAR" else None,
     )
+    youtube_video_id = values["youtube_video_id"]
 
-    published_at = None
-    if published_at_raw:
-        published_at = datetime.fromisoformat(
-            published_at_raw.replace("Z", "+00:00")
-        )
-
-    view_count = int(stats.get("viewCount", 0))
-    like_count = int(stats.get("likeCount")) if stats.get("likeCount") else None
-    comment_count = (
-        int(stats.get("commentCount")) if stats.get("commentCount") else None
-    )
-
-    if source == "POPULAR":
+    if resolved_source == "POPULAR":
         result = await db.execute(
             select(TrendVideo).where(
                 TrendVideo.youtube_video_id == youtube_video_id,
-                TrendVideo.region_code == region_code,
+                TrendVideo.region_code == values["region_code"],
             )
         )
     else:
@@ -115,37 +196,14 @@ async def create_or_update(
     existing = result.scalar_one_or_none()
 
     if existing:
-        existing.title = title
-        existing.channel_title = channel_title
-        existing.view_count = view_count
-        existing.like_count = like_count
-        existing.comment_count = comment_count
-        existing.virality_score = score
-        existing.published_at = published_at
-        existing.thumbnail_url = thumbnail_url
-        existing.category_title = category_title
-        existing.source = source or existing.source
-        existing.region_code = region_code
+        for field, value in values.items():
+            setattr(existing, field, value)
 
         await db.commit()
         await db.refresh(existing)
         return existing
 
-    new_video = TrendVideo(
-        keyword_id=keyword_id,
-        youtube_video_id=youtube_video_id,
-        title=title,
-        channel_title=channel_title,
-        view_count=view_count,
-        like_count=like_count,
-        comment_count=comment_count,
-        published_at=published_at,
-        virality_score=score,
-        thumbnail_url=thumbnail_url,
-        category_title=category_title,
-        source=source or "NICHE",
-        region_code=region_code,
-    )
+    new_video = TrendVideo(**values)
 
     db.add(new_video)
     await db.commit()
