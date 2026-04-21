@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 
 def _hours_since(value: datetime) -> float:
@@ -39,6 +39,12 @@ class TrendVideoBase(BaseModel):
     channel_thumbnail_url: Optional[str] = None
     category_id: Optional[str] = None
     category_title: str
+    transcript_text: Optional[str] = Field(default=None, exclude=True)
+    transcript_language_code: Optional[str] = None
+    transcript_language: Optional[str] = None
+    transcript_source: Optional[str] = None
+    transcript_error: Optional[str] = None
+    transcript_fetched_at: Optional[datetime] = None
     source: Optional[str] = None
     region_code: Optional[str] = None
 
@@ -98,5 +104,33 @@ class TrendVideoOut(TrendVideoBase):
             return None
         return round(self.view_count / max(self.subscriber_count, 1), 2)
 
+    @computed_field
+    @property
+    def has_transcript(self) -> bool:
+        return bool(getattr(self, "transcript_text", None))
+
+    @computed_field
+    @property
+    def transcript_excerpt(self) -> Optional[str]:
+        transcript = getattr(self, "transcript_text", None)
+        if not transcript:
+            return None
+
+        normalized = " ".join(transcript.split())
+        if len(normalized) <= 220:
+            return normalized
+
+        return f"{normalized[:217]}..."
+
     class Config:
         from_attributes = True
+
+
+class TranscriptContentOut(BaseModel):
+    id: int
+    title: str
+    youtube_video_id: str
+    transcript_text: str
+    transcript_language: Optional[str] = None
+    transcript_source: Optional[str] = None
+    transcript_fetched_at: Optional[datetime] = None

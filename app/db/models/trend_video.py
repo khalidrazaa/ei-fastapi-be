@@ -64,6 +64,12 @@ class TrendVideo(Base):
     channel_thumbnail_url = Column(String, nullable=True)
     category_id = Column(String, nullable=True)
     category_title = Column(String, nullable=False, default="Unknown")
+    transcript_text = Column(Text, nullable=True)
+    transcript_language_code = Column(String, nullable=True)
+    transcript_language = Column(String, nullable=True)
+    transcript_source = Column(String, nullable=True)
+    transcript_error = Column(Text, nullable=True)
+    transcript_fetched_at = Column(DateTime(timezone=True), nullable=True)
     video_payload = Column(JSON, nullable=True)
     channel_payload = Column(JSON, nullable=True)
 

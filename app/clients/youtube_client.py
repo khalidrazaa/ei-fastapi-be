@@ -4,9 +4,17 @@ from typing import List, Dict, Any
 
 class YouTubeClient:
     BASE_URL = "https://www.googleapis.com/youtube/v3"
+    MAX_IDS_PER_REQUEST = 50
 
     def __init__(self, api_key: str):
         self.api_key = api_key
+
+    def _chunk_ids(self, ids: List[str]) -> List[List[str]]:
+        cleaned_ids = [item for item in ids if item]
+        return [
+            cleaned_ids[index : index + self.MAX_IDS_PER_REQUEST]
+            for index in range(0, len(cleaned_ids), self.MAX_IDS_PER_REQUEST)
+        ]
 
     async def search_videos(
         self,
@@ -48,17 +56,22 @@ class YouTubeClient:
         Get detailed metadata for videos.
         """
         url = f"{self.BASE_URL}/videos"
-
-        params = {
-            "part": "statistics,snippet,contentDetails,status",
-            "id": ",".join(video_ids),
-            "key": self.api_key,
-        }
+        items: List[Dict[str, Any]] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
+            for chunk in self._chunk_ids(video_ids):
+                params = {
+                    "part": "statistics,snippet,contentDetails,status",
+                    "id": ",".join(chunk),
+                    "key": self.api_key,
+                }
+
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                items.extend(payload.get("items", []))
+
+        return {"items": items}
 
     async def get_channel_details(
         self,
@@ -68,17 +81,22 @@ class YouTubeClient:
         Get channel metadata and stats.
         """
         url = f"{self.BASE_URL}/channels"
-
-        params = {
-            "part": "snippet,statistics",
-            "id": ",".join(channel_ids),
-            "key": self.api_key,
-        }
+        items: List[Dict[str, Any]] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
+            for chunk in self._chunk_ids(channel_ids):
+                params = {
+                    "part": "snippet,statistics",
+                    "id": ",".join(chunk),
+                    "key": self.api_key,
+                }
+
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                items.extend(payload.get("items", []))
+
+        return {"items": items}
 
     async def get_video_categories(
         self,
