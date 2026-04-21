@@ -8,6 +8,29 @@ from app.db.models.niche import NicheKeyword
 from app.db.models.trend_video import TrendVideo
 
 
+STAGE_RANK = {
+    "watchlist": 1,
+    "emerging": 2,
+    "breakout": 3,
+    "sustained_demand": 4,
+    "trending": 5,
+}
+
+
+def _video_views_per_hour(video: TrendVideo) -> float:
+    age_hours = max(
+        (datetime.now(timezone.utc) - video.published_at).total_seconds() / 3600,
+        1.0,
+    )
+    return video.view_count / age_hours
+
+
+def _stage_priority(video: TrendVideo, preferred_stage: str | None = None) -> tuple[int, int]:
+    stage = video.trend_stage or "watchlist"
+    is_preferred = 1 if preferred_stage and stage == preferred_stage else 0
+    return (is_preferred, STAGE_RANK.get(stage, 0))
+
+
 def _video_sort_key(video: TrendVideo, sort: str) -> tuple:
     if sort == "views":
         return (video.view_count, video.comment_count or 0, video.virality_score)
@@ -17,6 +40,29 @@ def _video_sort_key(video: TrendVideo, sort: str) -> tuple:
         return (
             video.published_at.timestamp(),
             video.virality_score,
+            video.view_count,
+        )
+    if sort == "vph":
+        return (_video_views_per_hour(video), video.virality_score, video.view_count)
+    if sort == "breakout_score":
+        return (
+            video.breakout_score or 0,
+            video.virality_score,
+            video.view_count,
+        )
+    if sort == "engagement":
+        return (
+            video.engagement_score or 0,
+            video.comment_count or 0,
+            video.like_count or 0,
+            video.virality_score,
+        )
+    if sort in STAGE_RANK:
+        return (
+            *_stage_priority(video, sort),
+            video.virality_score,
+            video.breakout_score or 0,
+            _video_views_per_hour(video),
             video.view_count,
         )
     return (video.virality_score, video.comment_count or 0, video.view_count)
@@ -35,23 +81,7 @@ def _apply_video_filters(
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.where(TrendVideo.published_at >= cutoff)
 
-    if sort == "views":
-        return query.order_by(
-            TrendVideo.view_count.desc(),
-            TrendVideo.comment_count.desc(),
-        )
-    if sort == "comments":
-        return query.order_by(
-            TrendVideo.comment_count.desc(),
-            TrendVideo.view_count.desc(),
-        )
-    if sort == "recent":
-        return query.order_by(TrendVideo.published_at.desc())
-    return query.order_by(
-        TrendVideo.virality_score.desc(),
-        TrendVideo.comment_count.desc(),
-        TrendVideo.view_count.desc(),
-    )
+    return query
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -212,6 +242,35 @@ async def create_or_update(
     return new_video
 
 
+async def get_trend_video_by_id(db: AsyncSession, video_id: int) -> TrendVideo | None:
+    result = await db.execute(
+        select(TrendVideo).where(TrendVideo.id == video_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_transcript(
+    db: AsyncSession,
+    video: TrendVideo,
+    *,
+    transcript_text: str | None,
+    transcript_language_code: str | None = None,
+    transcript_language: str | None = None,
+    transcript_source: str | None = None,
+    transcript_error: str | None = None,
+) -> TrendVideo:
+    video.transcript_text = transcript_text
+    video.transcript_language_code = transcript_language_code
+    video.transcript_language = transcript_language
+    video.transcript_source = transcript_source
+    video.transcript_error = transcript_error
+    video.transcript_fetched_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
 async def get_recent_titles(db: AsyncSession, limit=500):
     result = await db.execute(
         select(TrendVideo.title)
@@ -237,7 +296,11 @@ async def get_videos_by_keyword(
     )
 
     result = await db.execute(query)
-    return result.scalars().all()
+    return sorted(
+        result.scalars().all(),
+        key=lambda video: _video_sort_key(video, sort),
+        reverse=True,
+    )
 
 
 async def get_recent_videos(db: AsyncSession, hours=24):
@@ -296,7 +359,6 @@ async def get_popular_videos(
     region_code: str | None = None,
     source: str | None = None,
 ):
-    print(f"Fetching popular videos with filters source: {source}")
     query = select(TrendVideo)
 
     if source and source != "all":
@@ -313,4 +375,8 @@ async def get_popular_videos(
     )
 
     result = await db.execute(query)
-    return result.scalars().all()
+    return sorted(
+        result.scalars().all(),
+        key=lambda video: _video_sort_key(video, sort),
+        reverse=True,
+    )

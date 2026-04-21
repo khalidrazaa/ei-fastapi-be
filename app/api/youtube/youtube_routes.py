@@ -5,12 +5,19 @@ from app.clients.youtube_client import YouTubeClient
 from app.core.config import settings
 from app.db.query.trend_video import get_videos_by_keyword
 from app.db.session import get_db
+from app.schemas.article import ArticleResponse
 from app.schemas.popular_video import PopularVideoOut
-from app.schemas.trend_video import TrendVideoOut
+from app.schemas.trend_video import TranscriptContentOut, TrendVideoOut
 from app.schemas.youtube import YouTubeScanResponse
 from app.scheduler.jobs import scan_popular_videos
 from app.services.scanner.youtube_scan_service import YouTubeScanService
-from app.services.trend_video import get_popular_videos, get_videos_by_niche
+from app.services.trend_video import (
+    fetch_and_store_transcript,
+    generate_article_draft_for_video,
+    get_video_transcript,
+    get_popular_videos,
+    get_videos_by_niche,
+)
 
 router = APIRouter()
 
@@ -137,6 +144,54 @@ async def get_popular_videos_route(
         region_code=region_code,
         source=source,
     )
+
+
+@router.post("/videos/{video_id}/transcript", response_model=TrendVideoOut)
+async def fetch_video_transcript_route(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await fetch_and_store_transcript(
+            db=db,
+            trend_video_id=video_id,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/videos/{video_id}/transcript", response_model=TranscriptContentOut)
+async def get_video_transcript_route(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await get_video_transcript(db=db, trend_video_id=video_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/videos/{video_id}/draft-article", response_model=ArticleResponse)
+async def generate_article_draft_route(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await generate_article_draft_for_video(db=db, trend_video_id=video_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/popular/scan")
