@@ -394,7 +394,7 @@ class YouTubeScanService:
             for i in range(len(words) - 1)
         ]
 
-    async def scan_popular(self, region_code: str, max_results: int = 2):
+    async def scan_popular(self, region_code: str, max_results: int = 10):
         """
         Scan popular videos for a region.
         Returns number of processed videos.

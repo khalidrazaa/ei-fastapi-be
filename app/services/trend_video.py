@@ -2,7 +2,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.query import trend_video as trend_video_query
 from app.services.article_service import generate_draft_from_video_transcript
-from app.services.youtube_transcript_service import YouTubeTranscriptService
+
+
+def _normalize_transcript_text(value: str) -> str:
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
+    lines = [line.rstrip() for line in normalized.split("\n")]
+    return "\n".join(lines).strip()
 
 
 async def get_videos_by_niche(
@@ -39,37 +44,26 @@ async def get_popular_videos(
     )
 
 
-async def fetch_and_store_transcript(
+async def save_video_transcript(
     db: AsyncSession,
     trend_video_id: int,
+    transcript_text: str,
 ) -> object:
     video = await trend_video_query.get_trend_video_by_id(db, trend_video_id)
     if not video:
         raise LookupError("Video not found.")
 
-    transcript_service = YouTubeTranscriptService()
-
-    try:
-        transcript = await transcript_service.fetch_transcript(video.youtube_video_id)
-    except Exception as exc:
-        await trend_video_query.update_transcript(
-            db,
-            video,
-            transcript_text=video.transcript_text,
-            transcript_language_code=video.transcript_language_code,
-            transcript_language=video.transcript_language,
-            transcript_source=video.transcript_source,
-            transcript_error=str(exc),
-        )
-        raise
+    normalized_text = _normalize_transcript_text(transcript_text)
+    if not normalized_text:
+        raise ValueError("Transcript text is required.")
 
     return await trend_video_query.update_transcript(
         db,
         video,
-        transcript_text=transcript["transcript_text"],
-        transcript_language_code=transcript.get("transcript_language_code"),
-        transcript_language=transcript.get("transcript_language"),
-        transcript_source=transcript.get("transcript_source"),
+        transcript_text=normalized_text,
+        transcript_language_code=video.transcript_language_code,
+        transcript_language=video.transcript_language,
+        transcript_source="manual",
         transcript_error=None,
     )
 
@@ -82,7 +76,7 @@ async def get_video_transcript(
     if not video:
         raise LookupError("Video not found.")
     if not video.transcript_text:
-        raise ValueError("Transcript not found. Fetch it first.")
+        raise ValueError("Transcript is not available for this video.")
 
     return {
         "id": video.id,

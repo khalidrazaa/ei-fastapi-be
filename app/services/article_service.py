@@ -85,7 +85,7 @@ async def generate_draft_from_video_transcript(
     video: TrendVideo,
 ) -> object:
     if not video.transcript_text:
-        raise ValueError("Fetch the transcript before generating an article draft.")
+        raise ValueError("Transcript is not available for this video.")
 
     gemini = GeminiClient()
     payload = await gemini.generate_article_from_transcript(
