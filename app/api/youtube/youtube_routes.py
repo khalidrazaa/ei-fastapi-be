@@ -7,19 +7,45 @@ from app.db.query.trend_video import get_videos_by_keyword
 from app.db.session import get_db
 from app.schemas.article import ArticleResponse
 from app.schemas.popular_video import PopularVideoOut
-from app.schemas.trend_video import TranscriptContentOut, TrendVideoOut
-from app.schemas.youtube import YouTubeScanResponse
+from app.schemas.trend_video import (
+    TranscriptContentOut,
+    TranscriptContentUpdateIn,
+    TrendVideoOut,
+)
+from app.schemas.youtube import (
+    PopularScanRunResponse,
+    PopularScanSettingsOut,
+    PopularScanSettingsUpdate,
+    YouTubeRegionOut,
+    YouTubeScanResponse,
+)
 from app.scheduler.jobs import scan_popular_videos
+from app.services.popular_scan_settings import (
+    get_or_create_popular_scan_settings,
+    save_popular_scan_settings,
+)
 from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.services.trend_video import (
-    fetch_and_store_transcript,
     generate_article_draft_for_video,
     get_video_transcript,
     get_popular_videos,
     get_videos_by_niche,
+    save_video_transcript,
 )
 
 router = APIRouter()
+
+
+def _map_youtube_regions(payload: dict) -> list[dict[str, str]]:
+    regions: list[dict[str, str]] = []
+
+    for item in payload.get("items", []):
+        code = str(item.get("id") or "").strip().upper()
+        name = str(item.get("snippet", {}).get("name") or "").strip()
+        if code and name:
+            regions.append({"code": code, "name": name})
+
+    return sorted(regions, key=lambda region: region["name"])
 
 
 @router.get("/niches/{niche_id}/scan-youtube")
@@ -146,15 +172,54 @@ async def get_popular_videos_route(
     )
 
 
-@router.post("/videos/{video_id}/transcript", response_model=TrendVideoOut)
-async def fetch_video_transcript_route(
-    video_id: int,
+@router.get("/popular/regions", response_model=list[YouTubeRegionOut])
+async def get_popular_regions_route():
+    try:
+        youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
+        payload = await youtube_client.get_i18n_regions()
+        return _map_youtube_regions(payload)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/popular/settings", response_model=PopularScanSettingsOut)
+async def get_popular_scan_settings_route(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await fetch_and_store_transcript(
+        return await get_or_create_popular_scan_settings(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/popular/settings", response_model=PopularScanSettingsOut)
+async def update_popular_scan_settings_route(
+    payload: PopularScanSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await save_popular_scan_settings(
+            db,
+            region_codes=payload.region_codes,
+            max_results=payload.max_results,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/videos/{video_id}/transcript", response_model=TrendVideoOut)
+async def save_video_transcript_route(
+    video_id: int,
+    payload: TranscriptContentUpdateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await save_video_transcript(
             db=db,
             trend_video_id=video_id,
+            transcript_text=payload.transcript_text,
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -194,13 +259,24 @@ async def generate_article_draft_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/popular/scan")
-async def trigger_popular_scan():
-    await scan_popular_videos()
-    return {"status": "done"}
+@router.post("/popular/scan", response_model=PopularScanRunResponse)
+async def trigger_popular_scan(
+    payload: PopularScanSettingsUpdate | None = None,
+):
+    try:
+        if payload is None:
+            return await scan_popular_videos()
+
+        return await scan_popular_videos(
+            region_codes=payload.region_codes,
+            max_results=payload.max_results,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/debug-trending")
 async def debug_trending():
-    await scan_popular_videos()
-    return {"status": "done"}
+    return await scan_popular_videos()

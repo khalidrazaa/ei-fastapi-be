@@ -7,6 +7,7 @@ from .trend_video import TrendVideo
 from .trends import TrendItem, TrendStatus
 from .discovered_trend import DiscoveredTrend
 from .idea_generated import TrendIdea
+from .popular_scan_setting import PopularScanSetting
 
 __all__ = [
     "AdminUser",
@@ -20,4 +21,5 @@ __all__ = [
     "TrendStatus",
     "DiscoveredTrend",
     "TrendIdea",
+    "PopularScanSetting",
 ]  #  include all models

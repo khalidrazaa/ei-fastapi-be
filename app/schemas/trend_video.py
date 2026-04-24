@@ -134,3 +134,7 @@ class TranscriptContentOut(BaseModel):
     transcript_language: Optional[str] = None
     transcript_source: Optional[str] = None
     transcript_fetched_at: Optional[datetime] = None
+
+
+class TranscriptContentUpdateIn(BaseModel):
+    transcript_text: str

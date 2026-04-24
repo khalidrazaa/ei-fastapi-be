@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from typing import List
+
+from pydantic import BaseModel, Field
 
 
 class YouTubeVideoOut(BaseModel):
@@ -16,3 +17,28 @@ class YouTubeScanResponse(BaseModel):
     keyword_id: int
     videos_saved: int
     videos: List[YouTubeVideoOut]
+
+
+class YouTubeRegionOut(BaseModel):
+    code: str
+    name: str
+
+
+class PopularScanSettingsBase(BaseModel):
+    region_codes: List[str] = Field(default_factory=list)
+    max_results: int = Field(default=10, ge=1, le=50)
+
+
+class PopularScanSettingsOut(PopularScanSettingsBase):
+    pass
+
+
+class PopularScanSettingsUpdate(PopularScanSettingsBase):
+    pass
+
+
+class PopularScanRunResponse(BaseModel):
+    status: str
+    regions: List[str]
+    max_results: int
+    total_processed: int
