@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     BREVO_API_KEY : str
     BREVO_URL : str
     GOOGLE_AI_STUDIO_API_KEY : str
+    OPENAI_API_KEY: str | None = None
+    OPENAI_DRAFT_MODEL: str = "gpt-5-mini"
     YOUTUBE_API_KEY : str
     YOUTUBE_BASE_URL: str
     

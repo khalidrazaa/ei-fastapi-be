@@ -380,3 +380,15 @@ async def get_popular_videos(
         key=lambda video: _video_sort_key(video, sort),
         reverse=True,
     )
+
+
+async def get_videos_with_transcripts(
+    db: AsyncSession,
+):
+    query = (
+        select(TrendVideo)
+        .where(TrendVideo.transcript_text.is_not(None))
+        .order_by(TrendVideo.transcript_fetched_at.desc(), TrendVideo.scanned_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()

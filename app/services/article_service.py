@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.trend_video import TrendVideo
 from app.db.query import article as article_query
 from app.services.gemini_service import GeminiClient
+from app.services.openai_service import OpenAIClient
 
 
 DEFAULT_HOST_SITE = "explainit.tech"
@@ -48,7 +49,7 @@ async def _build_unique_slug(db: AsyncSession, title: str) -> str:
 def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[str, Any]:
     content = str(payload.get("content") or "").strip()
     if not content:
-        raise ValueError("Gemini did not return article content.")
+        raise ValueError("The AI provider did not return article content.")
 
     title = str(payload.get("title") or video.title).strip() or video.title
     excerpt = str(payload.get("excerpt") or "").strip() or _fallback_excerpt(content)
@@ -80,23 +81,97 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
     }
 
 
+def _build_article_generation_prompt(
+    *,
+    video: TrendVideo,
+    prompt: str | None = None,
+    additional_context: str | None = None,
+) -> str:
+    custom_prompt = (prompt or "").strip()
+    extra_context = (additional_context or "").strip()
+    youtube_url = f"https://www.youtube.com/watch?v={video.youtube_video_id}"
+
+    sections = [
+        "You are an expert long-form editorial writer and SEO strategist.",
+        "Create a complete article draft from the YouTube transcript below.",
+        "Ground the writing in the transcript. Do not invent facts that are not supported by the transcript or the video metadata.",
+        "Return ONLY a JSON object with these keys:",
+        "- title",
+        "- seo_title",
+        "- excerpt",
+        "- meta_description",
+        "- category",
+        "- subcategory",
+        "- tags",
+        "- keywords",
+        "- language",
+        "- canonical_url",
+        "- schema_type",
+        "- open_graph_title",
+        "- open_graph_description",
+        "- content",
+        "",
+        "Requirements:",
+        "- `content` must be markdown.",
+        "- Use a strong headline, introduction, clear section headings, and a conclusion.",
+        "- Make it read like a polished article, not like raw transcript notes.",
+        "- Keep the article detailed and useful.",
+        "- `tags` and `keywords` must be arrays of short strings.",
+        "- Keep `meta_description` concise and SEO-friendly.",
+        "- `canonical_url` should be either the source YouTube URL or a clean site URL candidate if clearly appropriate.",
+        "- `schema_type` should usually be `Article`.",
+        "- `language` should usually be `en` unless the transcript clearly indicates a different language.",
+    ]
+
+    if custom_prompt:
+        sections.extend(["", "User prompt:", custom_prompt])
+
+    if extra_context:
+        sections.extend(["", "Additional input:", extra_context])
+
+    sections.extend(
+        [
+            "",
+            f"Video title: {video.title}",
+            f"Channel: {video.channel_title}",
+            f"Category: {video.category_title or 'YouTube'}",
+            f"Video URL: {youtube_url}",
+            f"Description: {video.description or 'N/A'}",
+            f"Transcript language: {video.transcript_language or 'Unknown'}",
+            "",
+            "Transcript:",
+            video.transcript_text or "",
+        ]
+    )
+
+    return "\n".join(sections).strip()
+
+
 async def generate_draft_from_video_transcript(
     db: AsyncSession,
     video: TrendVideo,
+    *,
+    provider: str = "gemini",
+    prompt: str | None = None,
+    additional_context: str | None = None,
 ) -> object:
     if not video.transcript_text:
         raise ValueError("Transcript is not available for this video.")
 
-    gemini = GeminiClient()
-    payload = await gemini.generate_article_from_transcript(
-        video_title=video.title,
-        channel_title=video.channel_title,
-        category_title=video.category_title,
-        youtube_url=f"https://www.youtube.com/watch?v={video.youtube_video_id}",
-        description=video.description,
-        transcript_language=video.transcript_language,
-        transcript_text=video.transcript_text,
+    request_prompt = _build_article_generation_prompt(
+        video=video,
+        prompt=prompt,
+        additional_context=additional_context,
     )
+
+    if provider == "chatgpt":
+        openai_client = OpenAIClient()
+        payload = await openai_client.generate_article_from_transcript(
+            prompt=request_prompt
+        )
+    else:
+        gemini = GeminiClient()
+        payload = await gemini.generate_article_from_transcript(prompt=request_prompt)
 
     article_fields = _coerce_article_payload(payload, video)
     title = article_fields["title"]

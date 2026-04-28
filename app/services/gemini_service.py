@@ -48,57 +48,8 @@ class GeminiClient:
     async def generate_article_from_transcript(
         self,
         *,
-        video_title: str,
-        channel_title: str,
-        category_title: str | None,
-        youtube_url: str,
-        description: str | None,
-        transcript_language: str | None,
-        transcript_text: str,
+        prompt: str,
     ) -> Dict[str, object]:
-        prompt = f"""
-You are an expert long-form editorial writer and SEO strategist.
-
-Create a complete article draft from the YouTube transcript below.
-Ground the writing in the transcript. Do not invent facts that are not supported by the transcript or the video metadata.
-Return ONLY a JSON object with these keys:
-- title
-- seo_title
-- excerpt
-- meta_description
-- category
-- subcategory
-- tags
-- keywords
-- language
-- canonical_url
-- schema_type
-- open_graph_title
-- open_graph_description
-- content
-
-Requirements:
-- `content` must be markdown.
-- Use a strong headline, introduction, clear section headings, and a conclusion.
-- Make it read like a polished article, not like raw transcript notes.
-- Keep the article detailed and useful.
-- `tags` and `keywords` must be arrays of short strings.
-- Keep `meta_description` concise and SEO-friendly.
-- `canonical_url` should be either the source YouTube URL or a clean site URL candidate if clearly appropriate.
-- `schema_type` should usually be `Article`.
-- `language` should usually be `en` unless the transcript clearly indicates a different language.
-
-Video title: {video_title}
-Channel: {channel_title}
-Category: {category_title or "YouTube"}
-Video URL: {youtube_url}
-Description: {description or "N/A"}
-Transcript language: {transcript_language or "Unknown"}
-
-Transcript:
-{transcript_text}
-""".strip()
-
         response = await self._generate_content(prompt)
         text = (response.text or "").strip()
 

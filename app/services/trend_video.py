@@ -44,6 +44,12 @@ async def get_popular_videos(
     )
 
 
+async def get_videos_with_transcripts(
+    db: AsyncSession,
+) -> object:
+    return await trend_video_query.get_videos_with_transcripts(db=db)
+
+
 async def save_video_transcript(
     db: AsyncSession,
     trend_video_id: int,
@@ -92,9 +98,19 @@ async def get_video_transcript(
 async def generate_article_draft_for_video(
     db: AsyncSession,
     trend_video_id: int,
+    *,
+    provider: str = "gemini",
+    prompt: str | None = None,
+    additional_context: str | None = None,
 ) -> object:
     video = await trend_video_query.get_trend_video_by_id(db, trend_video_id)
     if not video:
         raise LookupError("Video not found.")
 
-    return await generate_draft_from_video_transcript(db, video)
+    return await generate_draft_from_video_transcript(
+        db,
+        video,
+        provider=provider,
+        prompt=prompt,
+        additional_context=additional_context,
+    )

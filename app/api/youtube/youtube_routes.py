@@ -5,7 +5,7 @@ from app.clients.youtube_client import YouTubeClient
 from app.core.config import settings
 from app.db.query.trend_video import get_videos_by_keyword
 from app.db.session import get_db
-from app.schemas.article import ArticleResponse
+from app.schemas.article import ArticleDraftGenerateRequest, ArticleResponse
 from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import (
     TranscriptContentOut,
@@ -29,6 +29,7 @@ from app.services.trend_video import (
     generate_article_draft_for_video,
     get_video_transcript,
     get_popular_videos,
+    get_videos_with_transcripts,
     get_videos_by_niche,
     save_video_transcript,
 )
@@ -244,13 +245,30 @@ async def get_video_transcript_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/videos/{video_id}/draft-article", response_model=ArticleResponse)
-async def generate_article_draft_route(
-    video_id: int,
+@router.get("/transcripts/videos", response_model=list[TrendVideoOut])
+async def get_videos_with_transcripts_route(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await generate_article_draft_for_video(db=db, trend_video_id=video_id)
+        return await get_videos_with_transcripts(db=db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/videos/{video_id}/draft-article", response_model=ArticleResponse)
+async def generate_article_draft_route(
+    video_id: int,
+    payload: ArticleDraftGenerateRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await generate_article_draft_for_video(
+            db=db,
+            trend_video_id=video_id,
+            provider=payload.provider if payload else "gemini",
+            prompt=payload.prompt if payload else None,
+            additional_context=payload.additional_context if payload else None,
+        )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
