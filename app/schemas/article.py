@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -98,3 +98,9 @@ class ArticleResponse(ArticleBase):
     published_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ArticleDraftGenerateRequest(BaseModel):
+    provider: Literal["gemini", "chatgpt"] = "gemini"
+    prompt: Optional[str] = None
+    additional_context: Optional[str] = None

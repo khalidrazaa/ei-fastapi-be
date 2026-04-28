@@ -1,5 +1,6 @@
 # app/services/niche.py
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.query import niche as niche_query
 from app.schemas.niche import NicheCreate
@@ -30,7 +31,20 @@ class NicheService:
             await niche_query.delete_niche(db, niche)
 
     async def add_seed_keyword(self, db: AsyncSession, niche_id: int, keyword: str):
-        return await niche_query.create_keyword(db, niche_id, keyword)
+        niche = await niche_query.get_niche_by_id(db, niche_id)
+        if not niche:
+            raise HTTPException(status_code=404, detail="Niche not found")
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            raise HTTPException(status_code=400, detail="Keyword is required")
+
+        existing_keywords = await niche_query.get_keywords_by_niche(db, niche_id)
+        for existing in existing_keywords:
+            if existing.keyword.strip().lower() == normalized_keyword.lower():
+                return existing
+
+        return await niche_query.create_keyword(db, niche_id, normalized_keyword)
 
     async def delete_keyword(self, db: AsyncSession, niche_id: int, keyword_id: int):
         keyword = await niche_query.get_keyword_by_id(db, keyword_id)
