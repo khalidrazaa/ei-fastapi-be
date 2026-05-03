@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "ei-fastapi-be",
+			"path": "."
+		},
+		{
+			"name": "ei-admin-ui-nextjs",
+			"path": "../ei-admin-ui-nextjs"
+		}
+	],
+	"settings": {}
+}

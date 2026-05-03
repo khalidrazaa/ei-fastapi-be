@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.article import ArticleDraftGenerateRequest, ArticleResponse
 from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import (
+    ManualTranscriptCreateIn,
     TranscriptContentOut,
     TranscriptContentUpdateIn,
     TrendVideoOut,
@@ -26,6 +27,7 @@ from app.services.popular_scan_settings import (
 )
 from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.services.trend_video import (
+    create_manual_transcript,
     generate_article_draft_for_video,
     get_video_transcript,
     get_popular_videos,
@@ -224,6 +226,24 @@ async def save_video_transcript_route(
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/transcripts/manual", response_model=TrendVideoOut)
+async def create_manual_transcript_route(
+    payload: ManualTranscriptCreateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await create_manual_transcript(
+            db=db,
+            title=payload.title,
+            category_title=payload.category_title,
+            transcript_text=payload.transcript_text,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

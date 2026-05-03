@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -266,6 +267,62 @@ async def update_transcript(
     video.transcript_error = transcript_error
     video.transcript_fetched_at = datetime.now(timezone.utc)
 
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
+async def create_manual_transcript(
+    db: AsyncSession,
+    *,
+    title: str,
+    category_title: str,
+    transcript_text: str,
+) -> TrendVideo:
+    now = datetime.now(timezone.utc)
+    video = TrendVideo(
+        keyword_id=None,
+        youtube_video_id=f"manual-{uuid4().hex}",
+        youtube_channel_id=None,
+        title=title,
+        description=None,
+        channel_title="Manual Transcript",
+        channel_custom_url=None,
+        channel_description=None,
+        channel_country=None,
+        view_count=0,
+        like_count=None,
+        comment_count=None,
+        subscriber_count=None,
+        channel_view_count=None,
+        channel_video_count=None,
+        hidden_subscriber_count=None,
+        published_at=now,
+        channel_published_at=None,
+        virality_score=0,
+        speed_score=None,
+        breakout_score=None,
+        engagement_score=None,
+        freshness_score=None,
+        confidence_score=None,
+        trend_stage="watchlist",
+        thumbnail_url="",
+        channel_thumbnail_url=None,
+        category_id=None,
+        category_title=category_title,
+        transcript_text=transcript_text,
+        transcript_language_code=None,
+        transcript_language=None,
+        transcript_source="manual",
+        transcript_error=None,
+        transcript_fetched_at=now,
+        video_payload=None,
+        channel_payload=None,
+        source="MANUAL",
+        region_code=None,
+    )
+
+    db.add(video)
     await db.commit()
     await db.refresh(video)
     return video

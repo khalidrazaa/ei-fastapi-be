@@ -22,6 +22,27 @@ def _normalize_list(value: Any) -> list[str]:
     return []
 
 
+def _normalize_optional_string(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _normalize_status(value: Any) -> str:
+    normalized = str(value or "draft").strip().lower()
+    return normalized if normalized in {"draft", "published"} else "draft"
+
+
+def _normalize_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "featured"}
+    return bool(value)
+
+
 def _estimate_reading_time(content: str) -> int:
     words = len(content.split())
     return max(1, math.ceil(words / 200))
@@ -57,7 +78,8 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
         str(payload.get("meta_description") or "").strip() or excerpt[:160]
     )
 
-    youtube_url = f"https://www.youtube.com/watch?v={video.youtube_video_id}"
+    is_manual = video.source == "MANUAL" or video.youtube_video_id.startswith("manual-")
+    source_url = "" if is_manual else f"https://www.youtube.com/watch?v={video.youtube_video_id}"
 
     return {
         "title": title,
@@ -67,17 +89,31 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
         "meta_description": meta_description[:160],
         "category": str(payload.get("category") or video.category_title or "YouTube").strip()
         or "YouTube",
-        "subcategory": str(payload.get("subcategory") or video.channel_title).strip() or None,
+        "subcategory": _normalize_optional_string(
+            payload.get("subcategory") or video.channel_title
+        ),
         "tags": _normalize_list(payload.get("tags")),
         "keywords": _normalize_list(payload.get("keywords")),
+        "host_site": str(payload.get("host_site") or DEFAULT_HOST_SITE).strip()
+        or DEFAULT_HOST_SITE,
+        "status": _normalize_status(payload.get("status")),
         "language": str(payload.get("language") or "en").strip() or "en",
-        "canonical_url": str(payload.get("canonical_url") or youtube_url).strip(),
+        "canonical_url": str(payload.get("canonical_url") or source_url).strip() or None,
         "schema_type": str(payload.get("schema_type") or "Article").strip() or "Article",
         "open_graph_title": str(payload.get("open_graph_title") or title).strip() or title,
         "open_graph_description": (
             str(payload.get("open_graph_description") or meta_description).strip()
             or meta_description
         )[:200],
+        "open_graph_image": _normalize_optional_string(
+            payload.get("open_graph_image") or video.thumbnail_url
+        ),
+        "featured_image_url": _normalize_optional_string(
+            payload.get("featured_image_url") or video.thumbnail_url
+        ),
+        "image_alt_text": str(payload.get("image_alt_text") or video.title).strip()
+        or video.title,
+        "is_featured": _normalize_bool(payload.get("is_featured")),
     }
 
 
@@ -89,27 +125,35 @@ def _build_article_generation_prompt(
 ) -> str:
     custom_prompt = (prompt or "").strip()
     extra_context = (additional_context or "").strip()
-    youtube_url = f"https://www.youtube.com/watch?v={video.youtube_video_id}"
+    is_manual = video.source == "MANUAL" or video.youtube_video_id.startswith("manual-")
+    source_label = "Manual transcript" if is_manual else "YouTube transcript"
+    source_url = "" if is_manual else f"https://www.youtube.com/watch?v={video.youtube_video_id}"
 
     sections = [
         "You are an expert long-form editorial writer and SEO strategist.",
-        "Create a complete article draft from the YouTube transcript below.",
+        f"Create a complete article draft from the {source_label.lower()} below.",
         "Ground the writing in the transcript. Do not invent facts that are not supported by the transcript or the video metadata.",
         "Return ONLY a JSON object with these keys:",
         "- title",
         "- seo_title",
+        "- content",
         "- excerpt",
         "- meta_description",
         "- category",
         "- subcategory",
         "- tags",
         "- keywords",
+        "- host_site",
+        "- status",
         "- language",
         "- canonical_url",
         "- schema_type",
         "- open_graph_title",
         "- open_graph_description",
-        "- content",
+        "- open_graph_image",
+        "- featured_image_url",
+        "- image_alt_text",
+        "- is_featured",
         "",
         "Requirements:",
         "- `content` must be markdown.",
@@ -117,10 +161,14 @@ def _build_article_generation_prompt(
         "- Make it read like a polished article, not like raw transcript notes.",
         "- Keep the article detailed and useful.",
         "- `tags` and `keywords` must be arrays of short strings.",
+        "- `status` must be `draft` unless explicitly asked otherwise.",
+        "- `host_site` should default to `explainit.tech`.",
         "- Keep `meta_description` concise and SEO-friendly.",
         "- `canonical_url` should be either the source YouTube URL or a clean site URL candidate if clearly appropriate.",
         "- `schema_type` should usually be `Article`.",
         "- `language` should usually be `en` unless the transcript clearly indicates a different language.",
+        "- Image fields may be null if no suitable image URL is available.",
+        "- `is_featured` must be a boolean.",
     ]
 
     if custom_prompt:
@@ -132,10 +180,9 @@ def _build_article_generation_prompt(
     sections.extend(
         [
             "",
-            f"Video title: {video.title}",
-            f"Channel: {video.channel_title}",
+            f"Source title: {video.title}",
+            f"Source: {video.channel_title}",
             f"Category: {video.category_title or 'YouTube'}",
-            f"Video URL: {youtube_url}",
             f"Description: {video.description or 'N/A'}",
             f"Transcript language: {video.transcript_language or 'Unknown'}",
             "",
@@ -143,6 +190,9 @@ def _build_article_generation_prompt(
             video.transcript_text or "",
         ]
     )
+
+    if source_url:
+        sections.insert(-5, f"Video URL: {source_url}")
 
     return "\n".join(sections).strip()
 
@@ -189,8 +239,8 @@ async def generate_draft_from_video_transcript(
         category=article_fields["category"],
         subcategory=article_fields["subcategory"],
         tags=article_fields["tags"],
-        host_site=DEFAULT_HOST_SITE,
-        status="draft",
+        host_site=article_fields["host_site"],
+        status=article_fields["status"],
         language=article_fields["language"],
         drafted_at=now,
         meta_description=article_fields["meta_description"],
@@ -199,8 +249,8 @@ async def generate_draft_from_video_transcript(
         schema_type=article_fields["schema_type"],
         open_graph_title=article_fields["open_graph_title"],
         open_graph_description=article_fields["open_graph_description"],
-        open_graph_image=video.thumbnail_url,
-        featured_image_url=video.thumbnail_url,
-        image_alt_text=video.title,
-        is_featured=False,
+        open_graph_image=article_fields["open_graph_image"],
+        featured_image_url=article_fields["featured_image_url"],
+        image_alt_text=article_fields["image_alt_text"],
+        is_featured=article_fields["is_featured"],
     )
