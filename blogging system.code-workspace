@@ -7,6 +7,10 @@
 		{
 			"name": "ei-admin-ui-nextjs",
 			"path": "../ei-admin-ui-nextjs"
+		},
+		{
+			"name": "ei-ui-nextjs",
+			"path": "../ei-ui-nextjs"
 		}
 	],
 	"settings": {}

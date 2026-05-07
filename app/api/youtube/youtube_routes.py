@@ -23,6 +23,8 @@ from app.schemas.youtube import (
 from app.scheduler.jobs import scan_popular_videos
 from app.services.popular_scan_settings import (
     get_or_create_popular_scan_settings,
+    normalize_available_regions,
+    save_popular_scan_regions,
     save_popular_scan_settings,
 )
 from app.services.scanner.youtube_scan_service import YouTubeScanService
@@ -176,11 +178,29 @@ async def get_popular_videos_route(
 
 
 @router.get("/popular/regions", response_model=list[YouTubeRegionOut])
-async def get_popular_regions_route():
+async def get_popular_regions_route(
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        settings_payload = await get_or_create_popular_scan_settings(db)
+        return normalize_available_regions(
+            settings_payload.get("available_regions")
+            if isinstance(settings_payload, dict)
+            else None
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/popular/regions/refresh", response_model=list[YouTubeRegionOut])
+async def refresh_popular_regions_route(
+    db: AsyncSession = Depends(get_db),
+):
     try:
         youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
         payload = await youtube_client.get_i18n_regions()
-        return _map_youtube_regions(payload)
+        regions = _map_youtube_regions(payload)
+        return await save_popular_scan_regions(db, available_regions=regions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -8,6 +8,7 @@ class PopularScanSetting(Base):
 
     key = Column(String, primary_key=True, default="default")
     region_codes = Column(JSON, nullable=False, default=list)
+    available_regions = Column(JSON, nullable=False, default=list)
     max_results = Column(Integer, nullable=False, default=10)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(

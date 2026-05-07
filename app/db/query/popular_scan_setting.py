@@ -21,12 +21,14 @@ async def create_popular_scan_setting(
     db: AsyncSession,
     *,
     region_codes: list[str],
+    available_regions: list[dict[str, str]],
     max_results: int,
     key: str = DEFAULT_KEY,
 ) -> PopularScanSetting:
     setting = PopularScanSetting(
         key=key,
         region_codes=region_codes,
+        available_regions=available_regions,
         max_results=max_results,
     )
     db.add(setting)
@@ -40,9 +42,11 @@ async def update_popular_scan_setting(
     setting: PopularScanSetting,
     *,
     region_codes: list[str],
+    available_regions: list[dict[str, str]],
     max_results: int,
 ) -> PopularScanSetting:
     setting.region_codes = region_codes
+    setting.available_regions = available_regions
     setting.max_results = max_results
     await db.commit()
     await db.refresh(setting)
