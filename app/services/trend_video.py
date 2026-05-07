@@ -74,6 +74,32 @@ async def save_video_transcript(
     )
 
 
+async def create_manual_transcript(
+    db: AsyncSession,
+    *,
+    title: str,
+    category_title: str,
+    transcript_text: str,
+) -> object:
+    normalized_title = title.strip()
+    normalized_category = category_title.strip()
+    normalized_text = _normalize_transcript_text(transcript_text)
+
+    if not normalized_title:
+        raise ValueError("Title is required.")
+    if not normalized_category:
+        raise ValueError("Category is required.")
+    if not normalized_text:
+        raise ValueError("Transcript text is required.")
+
+    return await trend_video_query.create_manual_transcript(
+        db,
+        title=normalized_title,
+        category_title=normalized_category,
+        transcript_text=normalized_text,
+    )
+
+
 async def get_video_transcript(
     db: AsyncSession,
     trend_video_id: int,

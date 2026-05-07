@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.article import ArticleDraftGenerateRequest, ArticleResponse
 from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import (
+    ManualTranscriptCreateIn,
     TranscriptContentOut,
     TranscriptContentUpdateIn,
     TrendVideoOut,
@@ -22,10 +23,14 @@ from app.schemas.youtube import (
 from app.scheduler.jobs import scan_popular_videos
 from app.services.popular_scan_settings import (
     get_or_create_popular_scan_settings,
+    normalize_available_regions,
+    save_popular_scan_regions,
     save_popular_scan_settings,
 )
+from app.services.ai_exceptions import TemporaryProviderError
 from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.services.trend_video import (
+    create_manual_transcript,
     generate_article_draft_for_video,
     get_video_transcript,
     get_popular_videos,
@@ -174,11 +179,29 @@ async def get_popular_videos_route(
 
 
 @router.get("/popular/regions", response_model=list[YouTubeRegionOut])
-async def get_popular_regions_route():
+async def get_popular_regions_route(
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        settings_payload = await get_or_create_popular_scan_settings(db)
+        return normalize_available_regions(
+            settings_payload.get("available_regions")
+            if isinstance(settings_payload, dict)
+            else None
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/popular/regions/refresh", response_model=list[YouTubeRegionOut])
+async def refresh_popular_regions_route(
+    db: AsyncSession = Depends(get_db),
+):
     try:
         youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
         payload = await youtube_client.get_i18n_regions()
-        return _map_youtube_regions(payload)
+        regions = _map_youtube_regions(payload)
+        return await save_popular_scan_regions(db, available_regions=regions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -230,6 +253,24 @@ async def save_video_transcript_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/transcripts/manual", response_model=TrendVideoOut)
+async def create_manual_transcript_route(
+    payload: ManualTranscriptCreateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await create_manual_transcript(
+            db=db,
+            title=payload.title,
+            category_title=payload.category_title,
+            transcript_text=payload.transcript_text,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/videos/{video_id}/transcript", response_model=TranscriptContentOut)
 async def get_video_transcript_route(
     video_id: int,
@@ -271,6 +312,8 @@ async def generate_article_draft_route(
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except TemporaryProviderError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -138,3 +138,9 @@ class TranscriptContentOut(BaseModel):
 
 class TranscriptContentUpdateIn(BaseModel):
     transcript_text: str
+
+
+class ManualTranscriptCreateIn(BaseModel):
+    title: str
+    category_title: str
+    transcript_text: str

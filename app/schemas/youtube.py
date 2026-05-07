@@ -30,7 +30,7 @@ class PopularScanSettingsBase(BaseModel):
 
 
 class PopularScanSettingsOut(PopularScanSettingsBase):
-    pass
+    available_regions: List[YouTubeRegionOut] = Field(default_factory=list)
 
 
 class PopularScanSettingsUpdate(PopularScanSettingsBase):
