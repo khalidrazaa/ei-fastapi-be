@@ -27,6 +27,7 @@ from app.services.popular_scan_settings import (
     save_popular_scan_regions,
     save_popular_scan_settings,
 )
+from app.services.ai_exceptions import TemporaryProviderError
 from app.services.scanner.youtube_scan_service import YouTubeScanService
 from app.services.trend_video import (
     create_manual_transcript,
@@ -311,6 +312,8 @@ async def generate_article_draft_route(
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except TemporaryProviderError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
