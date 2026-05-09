@@ -5,6 +5,7 @@ from typing import Any
 from slugify import slugify
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.article import Article
 from app.db.models.trend_video import TrendVideo
 from app.db.query import article as article_query
 from app.services.gemini_service import GeminiClient
@@ -30,9 +31,49 @@ def _normalize_optional_string(value: Any) -> str | None:
     return normalized or None
 
 
-def _normalize_status(value: Any) -> str:
+def _normalize_required_string(value: Any, field_name: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    return normalized
+
+
+def _normalize_status(value: Any, *, strict: bool = False) -> str:
     normalized = str(value or "draft").strip().lower()
-    return normalized if normalized in {"draft", "published"} else "draft"
+    if normalized in {"draft", "published"}:
+        return normalized
+    if strict:
+        raise ValueError("Status must be either `draft` or `published`.")
+    return "draft"
+
+
+def _normalize_slug(value: Any) -> str:
+    raw_slug = _normalize_required_string(value, "Slug")
+    slug_value = slugify(raw_slug)
+    if not slug_value:
+        raise ValueError("Slug is invalid.")
+    return slug_value
+
+
+def _normalize_host_site(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized or DEFAULT_HOST_SITE
+
+
+def _normalize_optional_int(value: Any, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a number.")
+
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number.") from exc
+
+    if normalized < 0:
+        raise ValueError(f"{field_name} must be 0 or greater.")
+    return normalized
 
 
 def _normalize_bool(value: Any) -> bool:
@@ -94,8 +135,7 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
         ),
         "tags": _normalize_list(payload.get("tags")),
         "keywords": _normalize_list(payload.get("keywords")),
-        "host_site": str(payload.get("host_site") or DEFAULT_HOST_SITE).strip()
-        or DEFAULT_HOST_SITE,
+        "host_site": _normalize_host_site(payload.get("host_site")),
         "status": _normalize_status(payload.get("status")),
         "language": str(payload.get("language") or "en").strip() or "en",
         "canonical_url": str(payload.get("canonical_url") or source_url).strip() or None,
@@ -195,6 +235,122 @@ def _build_article_generation_prompt(
         sections.insert(-5, f"Video URL: {source_url}")
 
     return "\n".join(sections).strip()
+
+
+async def list_articles(
+    db: AsyncSession,
+    *,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[Article]:
+    normalized_status = _normalize_status(status, strict=True) if status else None
+    return await article_query.list_articles(
+        db,
+        status=normalized_status,
+        limit=limit,
+    )
+
+
+async def get_article(
+    db: AsyncSession,
+    article_id: int,
+) -> Article:
+    article = await article_query.get_article_by_id(db, article_id)
+    if article is None:
+        raise LookupError("Article not found.")
+    return article
+
+
+def _normalize_article_update_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+
+    if "title" in payload:
+        updates["title"] = _normalize_required_string(payload["title"], "Title")
+    if "seo_title" in payload:
+        updates["seo_title"] = _normalize_optional_string(payload["seo_title"])
+    if "slug" in payload:
+        updates["slug"] = _normalize_slug(payload["slug"])
+    if "category" in payload:
+        updates["category"] = _normalize_optional_string(payload["category"])
+    if "subcategory" in payload:
+        updates["subcategory"] = _normalize_optional_string(payload["subcategory"])
+    if "tags" in payload:
+        updates["tags"] = _normalize_list(payload["tags"])
+    if "keywords" in payload:
+        updates["keywords"] = _normalize_list(payload["keywords"])
+    if "status" in payload:
+        updates["status"] = _normalize_status(payload["status"], strict=True)
+    if "content" in payload:
+        updates["content"] = _normalize_optional_string(payload["content"])
+    if "excerpt" in payload:
+        updates["excerpt"] = _normalize_optional_string(payload["excerpt"])
+    if "reading_time" in payload:
+        updates["reading_time"] = _normalize_optional_int(
+            payload["reading_time"],
+            "Reading time",
+        )
+    if "featured_image_url" in payload:
+        updates["featured_image_url"] = _normalize_optional_string(
+            payload["featured_image_url"]
+        )
+    if "image_alt_text" in payload:
+        updates["image_alt_text"] = _normalize_optional_string(payload["image_alt_text"])
+    if "language" in payload:
+        updates["language"] = str(payload["language"] or "en").strip() or "en"
+    if "host_site" in payload:
+        updates["host_site"] = _normalize_host_site(payload["host_site"])
+    if "is_featured" in payload:
+        updates["is_featured"] = _normalize_bool(payload["is_featured"])
+    if "drafted_at" in payload:
+        updates["drafted_at"] = payload["drafted_at"]
+    if "meta_description" in payload:
+        updates["meta_description"] = _normalize_optional_string(payload["meta_description"])
+    if "canonical_url" in payload:
+        updates["canonical_url"] = _normalize_optional_string(payload["canonical_url"])
+    if "schema_type" in payload:
+        updates["schema_type"] = _normalize_optional_string(payload["schema_type"])
+    if "open_graph_title" in payload:
+        updates["open_graph_title"] = _normalize_optional_string(payload["open_graph_title"])
+    if "open_graph_description" in payload:
+        updates["open_graph_description"] = _normalize_optional_string(
+            payload["open_graph_description"]
+        )
+    if "open_graph_image" in payload:
+        updates["open_graph_image"] = _normalize_optional_string(payload["open_graph_image"])
+
+    return updates
+
+
+async def update_article(
+    db: AsyncSession,
+    article_id: int,
+    payload: dict[str, Any],
+) -> Article:
+    article = await get_article(db, article_id)
+    updates = _normalize_article_update_payload(payload)
+    if not updates:
+        return article
+
+    next_slug = updates.get("slug")
+    if next_slug:
+        existing = await article_query.get_article_by_slug(db, next_slug)
+        if existing and existing.id != article.id:
+            raise ValueError("Slug is already in use.")
+
+    if "content" in updates and "reading_time" not in updates:
+        next_content = updates["content"]
+        updates["reading_time"] = (
+            _estimate_reading_time(next_content) if next_content else None
+        )
+
+    next_status = updates.get("status")
+    now = datetime.now(timezone.utc)
+    if next_status == "published" and "published_at" not in updates:
+        updates["published_at"] = article.published_at or now
+    if next_status == "draft" and "drafted_at" not in updates:
+        updates["drafted_at"] = article.drafted_at or now
+
+    return await article_query.update_article(db, article, **updates)
 
 
 async def generate_draft_from_video_transcript(

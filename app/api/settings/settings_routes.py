@@ -7,11 +7,22 @@ from app.schemas.draft_prompt import (
     DraftPromptResponse,
     DraftPromptUpdate,
 )
+from app.schemas.host_site import (
+    HostSiteCreate,
+    HostSiteResponse,
+    HostSiteUpdate,
+)
 from app.services.draft_prompt import (
     create_draft_prompt,
     delete_draft_prompt,
     get_draft_prompts,
     update_draft_prompt,
+)
+from app.services.host_site import (
+    create_host_site,
+    delete_host_site,
+    get_host_sites,
+    update_host_site,
 )
 
 router = APIRouter()
@@ -70,3 +81,58 @@ async def delete_draft_prompt_route(
         await delete_draft_prompt(db=db, prompt_id=prompt_id)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/host-sites", response_model=list[HostSiteResponse])
+async def get_host_sites_route(
+    active_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_host_sites(db=db, active_only=active_only)
+
+
+@router.post("/host-sites", response_model=HostSiteResponse)
+async def create_host_site_route(
+    payload: HostSiteCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await create_host_site(
+            db=db,
+            host=payload.host,
+            is_active=payload.is_active,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/host-sites/{host_site_id}", response_model=HostSiteResponse)
+async def update_host_site_route(
+    host_site_id: int,
+    payload: HostSiteUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await update_host_site(
+            db=db,
+            host_site_id=host_site_id,
+            host=payload.host,
+            is_active=payload.is_active,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/host-sites/{host_site_id}", status_code=204)
+async def delete_host_site_route(
+    host_site_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await delete_host_site(db=db, host_site_id=host_site_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

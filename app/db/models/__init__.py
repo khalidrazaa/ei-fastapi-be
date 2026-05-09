@@ -9,6 +9,7 @@ from .discovered_trend import DiscoveredTrend
 from .idea_generated import TrendIdea
 from .popular_scan_setting import PopularScanSetting
 from .draft_prompt import DraftPrompt
+from .host_site import HostSite
 
 __all__ = [
     "AdminUser",
@@ -24,4 +25,5 @@ __all__ = [
     "TrendIdea",
     "PopularScanSetting",
     "DraftPrompt",
+    "HostSite",
 ]  #  include all models
