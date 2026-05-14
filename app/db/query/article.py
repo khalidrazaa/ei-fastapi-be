@@ -18,11 +18,14 @@ async def list_articles(
     db: AsyncSession,
     *,
     status: str | None = None,
+    host_site: str | None = None,
     limit: int = 100,
 ) -> list[Article]:
     query = select(Article)
     if status:
         query = query.where(Article.status == status)
+    if host_site:
+        query = query.where(Article.host_site == host_site)
 
     query = query.order_by(Article.created_at.desc()).limit(limit)
 

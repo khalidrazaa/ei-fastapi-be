@@ -10,6 +10,8 @@ from .idea_generated import TrendIdea
 from .popular_scan_setting import PopularScanSetting
 from .draft_prompt import DraftPrompt
 from .host_site import HostSite
+from .article_comment import ArticleComment
+from .public_api_key import PublicApiKey
 
 __all__ = [
     "AdminUser",
@@ -26,4 +28,6 @@ __all__ = [
     "PopularScanSetting",
     "DraftPrompt",
     "HostSite",
+    "ArticleComment",
+    "PublicApiKey",
 ]  #  include all models
