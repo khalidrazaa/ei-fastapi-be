@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     OPENAI_DRAFT_MODEL: str = "gpt-5-mini"
     YOUTUBE_API_KEY : str
     YOUTUBE_BASE_URL: str
+    PUBLIC_APP_KEYS: str = ""
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:

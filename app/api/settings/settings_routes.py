@@ -12,6 +12,11 @@ from app.schemas.host_site import (
     HostSiteResponse,
     HostSiteUpdate,
 )
+from app.schemas.public_api_key import (
+    PublicApiKeyGenerateRequest,
+    PublicApiKeyGenerateResponse,
+    PublicApiKeyResponse,
+)
 from app.services.draft_prompt import (
     create_draft_prompt,
     delete_draft_prompt,
@@ -23,6 +28,11 @@ from app.services.host_site import (
     delete_host_site,
     get_host_sites,
     update_host_site,
+)
+from app.services.public_api_key import (
+    generate_public_api_key,
+    get_public_api_keys,
+    revoke_public_api_key,
 )
 
 router = APIRouter()
@@ -136,3 +146,48 @@ async def delete_host_site_route(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/public-api-keys", response_model=list[PublicApiKeyResponse])
+async def get_public_api_keys_route(
+    active_only: bool = False,
+    host: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await get_public_api_keys(
+            db=db,
+            active_only=active_only,
+            host=host,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/public-api-keys/generate", response_model=PublicApiKeyGenerateResponse)
+async def generate_public_api_key_route(
+    payload: PublicApiKeyGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await generate_public_api_key(
+            db=db,
+            host=payload.host,
+            name=payload.name,
+            deactivate_old_keys=payload.deactivate_old_keys,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/public-api-keys/{api_key_id}/revoke", response_model=PublicApiKeyResponse)
+async def revoke_public_api_key_route(
+    api_key_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await revoke_public_api_key(db=db, api_key_id=api_key_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))

@@ -60,6 +60,25 @@ def _normalize_host_site(value: Any) -> str:
     return normalized or DEFAULT_HOST_SITE
 
 
+def _normalize_host_for_lookup(value: Any) -> str:
+    host = str(value or "").strip().lower()
+    host = host.removeprefix("https://").removeprefix("http://")
+    host = host.split("/", 1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        raise ValueError("Host site is required.")
+    return host
+
+
+def _host_matches(article_host: Any, expected_host: str) -> bool:
+    try:
+        normalized_article_host = _normalize_host_for_lookup(article_host)
+    except ValueError:
+        return False
+    return normalized_article_host == expected_host
+
+
 def _normalize_optional_int(value: Any, field_name: str) -> int | None:
     if value is None:
         return None
@@ -241,12 +260,15 @@ async def list_articles(
     db: AsyncSession,
     *,
     status: str | None = None,
+    host_site: str | None = None,
     limit: int = 100,
 ) -> list[Article]:
     normalized_status = _normalize_status(status, strict=True) if status else None
+    normalized_host = _normalize_host_for_lookup(host_site) if host_site else None
     return await article_query.list_articles(
         db,
         status=normalized_status,
+        host_site=normalized_host,
         limit=limit,
     )
 
@@ -257,6 +279,38 @@ async def get_article(
 ) -> Article:
     article = await article_query.get_article_by_id(db, article_id)
     if article is None:
+        raise LookupError("Article not found.")
+    return article
+
+
+async def list_published_articles_for_host(
+    db: AsyncSession,
+    *,
+    host_site: str,
+    limit: int = 100,
+) -> list[Article]:
+    normalized_host = _normalize_host_for_lookup(host_site)
+    return await article_query.list_articles(
+        db,
+        status="published",
+        host_site=normalized_host,
+        limit=limit,
+    )
+
+
+async def get_published_article_by_slug_for_host(
+    db: AsyncSession,
+    *,
+    slug: str,
+    host_site: str,
+) -> Article:
+    normalized_host = _normalize_host_for_lookup(host_site)
+    article = await article_query.get_article_by_slug(db, slug)
+    if article is None:
+        raise LookupError("Article not found.")
+    if article.status != "published":
+        raise LookupError("Article not found.")
+    if not _host_matches(article.host_site, normalized_host):
         raise LookupError("Article not found.")
     return article
 

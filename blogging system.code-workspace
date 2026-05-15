@@ -11,6 +11,10 @@
 		{
 			"name": "ei-ui-nextjs",
 			"path": "../ei-ui-nextjs"
+		},
+		{
+			"name": "sb-ui-nextjs",
+			"path": "../sb-ui-nextjs"
 		}
 	],
 	"settings": {}
