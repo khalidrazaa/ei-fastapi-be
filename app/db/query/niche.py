@@ -35,6 +35,7 @@ async def get_niche_by_name(db: AsyncSession, name: str) -> Optional[Niche]:
 async def get_all_niches(db: AsyncSession, skip: int = 0, limit: int = 50) -> List[Niche]:
     stmt = (
         select(Niche)
+        .where(Niche.is_active.is_(True))
         .options(selectinload(Niche.keywords))
         .offset(skip)
         .limit(limit)
