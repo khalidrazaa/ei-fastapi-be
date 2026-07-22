@@ -20,7 +20,7 @@ def start_scheduler():
         scan_all_niches,
         trigger=IntervalTrigger(hours=6),  # run every 6 hours
         #trigger=IntervalTrigger(minutes=1),  # run every 3 minutes (for testing, change to hours=3),
-        next_run_time= datetime.now() + timedelta(minutes=10),
+        next_run_time= datetime.now() + timedelta(hours=6),
         id="scan_all_niches",
         replace_existing=True,
     )
@@ -29,7 +29,7 @@ def start_scheduler():
         discover_trends,
         trigger=IntervalTrigger(hours=12),
         # trigger=IntervalTrigger(minutes=2),
-        next_run_time= datetime.now() + timedelta(minutes=5),
+        next_run_time= datetime.now() + timedelta(minutes=6),
         id="discover_trends",
         replace_existing=True
     )
