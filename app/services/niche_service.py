@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from app.db.query import niche as niche_query
 from app.schemas.niche import NicheCreate
 
@@ -22,8 +23,15 @@ class NicheService:
             is_active=niche.is_active,
         )
 
-    async def get_all_niches(self, db: AsyncSession):
-        return await niche_query.get_all_niches(db)
+    async def get_all_niches(self, db: AsyncSession, page: int, size: int):
+        skip = (page - 1) * size
+        items, total = await niche_query.get_all_niches(db, skip, size)
+        return {
+            "page": page,
+            "size": size,
+            "total": total,
+            "items": items
+        }
 
     async def delete_niche(self, db: AsyncSession, niche_id: int):
         niche = await niche_query.get_niche_by_id(db, niche_id)
