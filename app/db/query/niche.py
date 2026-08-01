@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import selectinload
 from app.db.models.niche import Niche, NicheKeyword
 
@@ -32,16 +32,26 @@ async def get_niche_by_name(db: AsyncSession, name: str) -> Optional[Niche]:
     return result.scalar_one_or_none()
 
 
-async def get_all_niches(db: AsyncSession, skip: int = 0, limit: int = 50) -> List[Niche]:
-    stmt = (
+async def get_all_niches(db: AsyncSession,  skip:int = 0, limit: int = 50, ):
+
+    # total count
+    total_stmt = select(func.count()).select_from(Niche).where(Niche.is_active.is_(True))
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar()
+
+    # paginated data
+
+    data_stmt = (
         select(Niche)
         .where(Niche.is_active.is_(True))
         .options(selectinload(Niche.keywords))
         .offset(skip)
         .limit(limit)
     )
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    result = await db.execute(data_stmt)
+    items = result.scalars().all()
+
+    return items, total
 
 
 async def create_niche(db: AsyncSession, **data) -> Niche:
