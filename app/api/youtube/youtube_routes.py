@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.youtube_client import YouTubeClient
@@ -141,6 +141,8 @@ async def get_niche_videos_route(
     min_views: int = 0,
     days: int | None = None,
     db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
 ):
     return await get_videos_by_niche(
         db=db,
@@ -148,6 +150,8 @@ async def get_niche_videos_route(
         sort=sort,
         min_views=min_views,
         days=days,
+        page=page,
+        size=size,
     )
 
 
