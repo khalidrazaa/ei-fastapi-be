@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select,func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.niche import NicheKeyword
@@ -380,6 +380,8 @@ async def get_videos_by_niche(
     sort: str = "score",
     min_views: int = 0,
     days: int | None = None,
+    skip: int = 0,
+    limit: int = 20,
 ):
     query = (
         select(TrendVideo)

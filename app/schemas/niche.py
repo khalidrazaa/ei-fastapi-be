@@ -36,13 +36,5 @@ class NicheOut(NicheBase):
     class Config:
         from_attributes = True
 
-class PaginatedNicheOut(BaseModel):
-    items: List[NicheOut]
-    total: int
-    page: int
-    size: int
-
-    class Config:
-        from_attributes = True
 
 NicheOut.model_rebuild()

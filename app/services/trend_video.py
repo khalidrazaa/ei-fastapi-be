@@ -16,13 +16,27 @@ async def get_videos_by_niche(
     sort: str = "score",
     min_views: int = 0,
     days: int | None = None,
+    page: int = 1,
+    size: int = 20,
 ):
+    skip = (page - 1) * size
+    items, total = await trend_video_query.get_videos_by_niche(
+        db=db,
+        niche_id=niche_id,
+        sort=sort,
+        min_views=min_views,
+        days=days,
+        skip=skip,
+        limit=size,
+    )
     return await trend_video_query.get_videos_by_niche(
         db=db,
         niche_id=niche_id,
         sort=sort,
         min_views=min_views,
         days=days,
+        skip=skip,
+        limit=size,
     )
 
 
