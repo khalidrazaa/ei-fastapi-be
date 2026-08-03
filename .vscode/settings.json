@@ -1,4 +1,10 @@
 {
     "python-envs.pythonProjects": [],
-    "python.analysis.enableAsyncProgram": false
+    "python.analysis.enableAsyncProgram": false,
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports.ruff": "always"
+        }
+    }
 }

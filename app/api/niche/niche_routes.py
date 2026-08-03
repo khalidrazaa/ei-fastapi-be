@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any
+from typing import List
 
 from app.db.models.niche import Niche
 from app.db.session import get_db
@@ -10,7 +10,6 @@ from app.schemas.niche import (
     NicheCreate,
     NicheOut,
     NicheUpdate,
-    PaginatedNicheOut,
 )
 from app.services.niche_service import NicheService
 
@@ -26,13 +25,11 @@ async def create_niche(
     return await service.create_niche(db, niche)
 
 
-@router.get("/", response_model = PaginatedNicheOut)
+@router.get("/", response_model = List[NicheOut])
 async def list_niches(
     db: AsyncSession = Depends(get_db),
-    page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
 ):
-    return await service.get_all_niches(db, page, size)
+    return await service.get_all_niches(db)
 
 
 @router.delete("/{niche_id}")
