@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException,Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.query.trend_video import get_videos_by_keyword
+from app.db.query.yt_video import get_videos_by_keyword
 from app.db.session import get_db
 from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import (
@@ -10,15 +10,15 @@ from app.schemas.trend_video import (
     TranscriptContentUpdateIn,
     TrendVideoOut,
 )
-
-from app.services.trend_video import (
+from app.services.yt_video import (
     create_manual_transcript,
-    get_video_transcript,
     get_popular_videos,
-    get_videos_with_transcripts,
+    get_video_transcript,
     get_videos_by_niche,
+    get_videos_with_transcripts,
     save_video_transcript,
 )
+
 router = APIRouter()
 
 
@@ -75,14 +75,17 @@ async def get_popular_videos_route(
     source: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    
-    print("Getting popular videos with params:", {
-        "sort": sort,
-        "min_views": min_views,
-        "days": days,
-        "region_code": region_code,
-        "source": source,
-    })
+
+    print(
+        "Getting popular videos with params:",
+        {
+            "sort": sort,
+            "min_views": min_views,
+            "days": days,
+            "region_code": region_code,
+            "source": source,
+        },
+    )
     return await get_popular_videos(
         db=db,
         sort=sort,
@@ -91,6 +94,7 @@ async def get_popular_videos_route(
         region_code=region_code,
         source=source,
     )
+
 
 @router.post("/transcript/{video_id}", response_model=TrendVideoOut)
 async def save_video_transcript_route(
@@ -153,5 +157,3 @@ async def get_videos_with_transcripts_route(
         return await get_videos_with_transcripts(db=db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-

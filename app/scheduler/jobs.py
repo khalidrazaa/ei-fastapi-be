@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.db.query.discovered_trend import upsert_trend
 from app.db.query.idea_generated import create_trend_idea
 from app.db.query.niche import get_all_niches
-from app.db.query.trend_video import get_recent_videos
+from app.db.query.yt_video import get_recent_videos
 from app.db.session import SessionLocal
 from app.services.analyzer.idea_generator import IdeaGenerator
 from app.services.analyzer.trend_analyzer import TrendAnalyzer
@@ -95,9 +95,8 @@ async def scan_popular_videos(
 
     async with SessionLocal() as db:
         stored_settings = await get_or_create_popular_scan_settings(db)
-        resolved_regions = (
-            normalize_region_codes(region_codes)
-            or list(stored_settings["region_codes"])
+        resolved_regions = normalize_region_codes(region_codes) or list(
+            stored_settings["region_codes"]
         )
         resolved_max_results = normalize_max_results(
             max_results or int(stored_settings["max_results"])

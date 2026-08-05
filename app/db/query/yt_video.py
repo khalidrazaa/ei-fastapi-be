@@ -2,12 +2,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select,func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.niche import NicheKeyword
 from app.db.models.trend_video import TrendVideo
-
 
 STAGE_RANK = {
     "watchlist": 1,
@@ -26,7 +25,9 @@ def _video_views_per_hour(video: TrendVideo) -> float:
     return video.view_count / age_hours
 
 
-def _stage_priority(video: TrendVideo, preferred_stage: str | None = None) -> tuple[int, int]:
+def _stage_priority(
+    video: TrendVideo, preferred_stage: str | None = None
+) -> tuple[int, int]:
     stage = video.trend_stage or "watchlist"
     is_preferred = 1 if preferred_stage and stage == preferred_stage else 0
     return (is_preferred, STAGE_RANK.get(stage, 0))
@@ -244,9 +245,7 @@ async def create_or_update(
 
 
 async def get_trend_video_by_id(db: AsyncSession, video_id: int) -> TrendVideo | None:
-    result = await db.execute(
-        select(TrendVideo).where(TrendVideo.id == video_id)
-    )
+    result = await db.execute(select(TrendVideo).where(TrendVideo.id == video_id))
     return result.scalar_one_or_none()
 
 
@@ -330,9 +329,7 @@ async def create_manual_transcript(
 
 async def get_recent_titles(db: AsyncSession, limit=500):
     result = await db.execute(
-        select(TrendVideo.title)
-        .order_by(TrendVideo.scanned_at.desc())
-        .limit(limit)
+        select(TrendVideo.title).order_by(TrendVideo.scanned_at.desc()).limit(limit)
     )
     return [row[0] for row in result.all()]
 

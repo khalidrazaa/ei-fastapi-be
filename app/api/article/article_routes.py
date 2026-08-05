@@ -9,7 +9,7 @@ from app.schemas.article import (
 )
 from app.services import article_service
 from app.services.ai_exceptions import TemporaryProviderError
-from app.services.trend_video import generate_article_draft_for_video
+from app.services.yt_video import generate_article_draft_for_video
 
 router = APIRouter()
 
