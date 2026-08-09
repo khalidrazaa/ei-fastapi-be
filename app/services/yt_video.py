@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.query import yt_video as trend_video_query
+from app.db.query.yt_video import get_videos_by_niche
 from app.services.article_service import generate_draft_from_video_transcript
 
 

@@ -18,6 +18,7 @@ from app.services.yt_video import (
     get_videos_with_transcripts,
     save_video_transcript,
 )
+from app.services.yt_video_service.yt_video import get_videos_by_niche_id
 
 router = APIRouter()
 
@@ -55,7 +56,7 @@ async def get_niche_videos_route(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
 ):
-    return await get_videos_by_niche(
+    return await get_videos_by_niche_id(
         db=db,
         niche_id=niche_id,
         sort=sort,
