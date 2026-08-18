@@ -7,17 +7,16 @@ from app.db.query_builder import QueryBuilder
 
 SORT_FIELD_MAP = {
     "score": TrendVideo.virality_score,
-    "trending": TrendVideo.trending_score,
-    "breakout": TrendVideo.breakout_score,
-    "emerging": TrendVideo.emerging_score,
-    "sustained_demand": TrendVideo.sustained_demand_score,
-    "watchlist": TrendVideo.watchlist_score,
-    "vph": TrendVideo.views_per_hour,
+    "trend_stage": TrendVideo.trend_stage,
+    "speed_score": TrendVideo.speed_score,
     "breakout_score": TrendVideo.breakout_score,
     "engagement": TrendVideo.engagement_score,
     "views": TrendVideo.view_count,
-    "recent": TrendVideo.created_at,
+    "published_at": TrendVideo.published_at,
     "region": TrendVideo.region_code,
+    "source": TrendVideo.source,
+    "category_title": TrendVideo.category_title,
+    "confidence_score": TrendVideo.confidence_score,
 }
 
 
