@@ -14,7 +14,6 @@ from app.services.yt_video import (
     create_manual_transcript,
     get_popular_videos,
     get_video_transcript,
-    get_videos_by_niche,
     get_videos_with_transcripts,
     save_video_transcript,
 )
