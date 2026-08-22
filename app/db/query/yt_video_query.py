@@ -30,22 +30,13 @@ async def query_by_niche(
     page: int = 1,
     size: int = 20,
 ):
-    qb = QueryBuilder(TrendVideo)
-
-    qb.join(
-        NicheKeyword,
-        TrendVideo.keyword_id == NicheKeyword.id,
-    )
-
-    qb.filter(
-        NicheKeyword.niche_id == niche_id,
-        TrendVideo.view_count >= min_views if min_views else None,
-    )
-
-    # ✅ Build query
+    # 1. Build base query
     base_query = (
         QueryBuilder(TrendVideo)
-        .join(NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id)
+        .join(
+            NicheKeyword,
+            TrendVideo.keyword_id == NicheKeyword.id,
+        )
         .filter(
             NicheKeyword.niche_id == niche_id,
             TrendVideo.view_count >= min_views if min_views else None,
@@ -53,29 +44,43 @@ async def query_by_niche(
         .build()
     )
 
-    # ✅ Deduplicate using window function
-    deduped_query, video_columns = deduplicate_videos(base_query)
+    # 2. Create ranked CTE
+    ranked = deduplicate_videos(base_query)
 
+    # 3. Build sorting
     if isinstance(sort, str):
         sort = sort.split(",")
 
     order_by_clause = []
 
     for f in sort:
-        desc = f.startswith("-")
+        descending = f.startswith("-")
         key = f.lstrip("-")
 
-        col = SORT_FIELD_MAP.get(key)
+        original_col = SORT_FIELD_MAP.get(key)
 
-        if not col:
+        if original_col is None:
             raise ValueError(f"Unknown sort field: {key}")
 
-        order_by_clause.append(col.desc() if desc else col.asc())
+        # Sort using the CTE column, NOT TrendVideo.column
+        col = ranked.c[original_col.name]
 
+        order_by_clause.append(col.desc() if descending else col.asc())
+
+    # 4. Select actual TrendVideo ORM objects
     final_query = (
-        deduped_query.order_by(*order_by_clause).limit(size).offset((page - 1) * size)
+        select(TrendVideo)
+        .join(
+            ranked,
+            TrendVideo.id == ranked.c.id,
+        )
+        .where(
+            ranked.c.rank == 1,
+        )
+        .order_by(*order_by_clause)
     )
 
+    # 5. Pagination + total + metadata
     return await paginate_query(
         db=db,
         query=final_query,
@@ -91,7 +96,7 @@ def deduplicate_videos(base_query):
             partition_by=TrendVideo.youtube_video_id,
             order_by=TrendVideo.virality_score.desc(),
         )
-        .label("rank")
+        .label("rank"),
     ).cte("ranked_videos")
 
-    return select(ranked).where(ranked.c.rank == 1)
+    return ranked
