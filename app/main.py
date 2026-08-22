@@ -1,11 +1,13 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.api.router import router as api_router
-from app.db.session import engine
 import asyncio
 import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.router import router as api_router
 from app.core.config import settings
 from app.db.mongodb import get_mongo_db
+from app.db.session import engine
 from app.scheduler.scheduler import start_scheduler
 
 app = FastAPI()
@@ -23,7 +25,7 @@ app.add_middleware(
 )
 
 # Keep the versioned API as the primary surface, and expose an unversioned
-app.include_router(api_router, prefix="/v1/api")
+app.include_router(api_router, prefix="/v1")
 
 
 @app.on_event("startup")

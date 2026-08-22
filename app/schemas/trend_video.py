@@ -144,3 +144,22 @@ class ManualTranscriptCreateIn(BaseModel):
     title: str
     category_title: str
     transcript_text: str
+
+
+class PaginationMeta(BaseModel):
+    total: int
+    page: int
+    size: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+
+
+class TrendVideoPaginated(BaseModel):
+    items: list[TrendVideoOut]
+    total: int
+    page: int
+    size: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool

@@ -1,10 +1,10 @@
 from app.services.analyzer.ngram_analyzer import NgramAnalyzer
-from app.db.query.trend_video import get_recent_titles
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.query.yt_video import get_recent_titles
 
 
 class TrendDiscoveryService:
-
     def __init__(self, db: AsyncSession):
         self.db = db
         self.analyzer = NgramAnalyzer()

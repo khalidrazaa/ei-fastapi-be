@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.youtube_client import YouTubeClient
 from app.db.query.niche import get_keyword_by_id, get_keywords_by_niche, get_niche_by_id
-from app.db.query.trend_video import create_or_update
+from app.db.query.yt_video import create_or_update
 
 
 class YouTubeScanService:
@@ -302,8 +302,10 @@ class YouTubeScanService:
         if virality_score >= 8.5 or (speed_score >= 8.0 and breakout_score >= 7.0):
             return "trending"
 
-        if age_hours <= 48 and breakout_score >= 6.5 and (
-            speed_score >= 5.0 or engagement_score >= 5.0
+        if (
+            age_hours <= 48
+            and breakout_score >= 6.5
+            and (speed_score >= 5.0 or engagement_score >= 5.0)
         ):
             return "breakout"
 
@@ -329,10 +331,14 @@ class YouTubeScanService:
         comments = self._safe_int(stats.get("commentCount"))
         age_hours = self._hours_since_published(snippet.get("publishedAt")) or 1.0
 
-        subscriber_count = self._safe_int(channel_stats.get("subscriberCount"), 0) or None
+        subscriber_count = (
+            self._safe_int(channel_stats.get("subscriberCount"), 0) or None
+        )
         channel_view_count = self._safe_int(channel_stats.get("viewCount"))
         channel_video_count = self._safe_int(channel_stats.get("videoCount"))
-        hidden_subscriber_count = bool(channel_stats.get("hiddenSubscriberCount", False))
+        hidden_subscriber_count = bool(
+            channel_stats.get("hiddenSubscriberCount", False)
+        )
 
         views_per_hour = views / max(age_hours, 1.0)
         likes_per_1k = (likes * 1000) / max(views, 1)
@@ -389,10 +395,7 @@ class YouTubeScanService:
         title = title.lower()
         words = re.findall(r"\b[a-zA-Z]{3,}\b", title)
 
-        return [
-            " ".join(words[i : i + 2])
-            for i in range(len(words) - 1)
-        ]
+        return [" ".join(words[i : i + 2]) for i in range(len(words) - 1)]
 
     async def scan_popular(self, region_code: str, max_results: int = 10):
         """

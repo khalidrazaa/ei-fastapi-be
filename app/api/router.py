@@ -32,7 +32,7 @@ router.include_router(
 
 # Videos fetching & storage
 router.include_router(
-    video_routes.router, prefix="/admin/vidoes", tags=["videos_query_api"]
+    video_routes.router, prefix="/admin/videos", tags=["videos_query_api"]
 )
 
 # articles management
