@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.niche import NicheKeyword
 from app.db.models.trend_video import TrendVideo
+from app.db.pagination import paginate_query
 from app.db.query_builder import QueryBuilder
 
 SORT_FIELD_MAP = {
@@ -31,8 +32,20 @@ async def query_by_niche(
 ):
     qb = QueryBuilder(TrendVideo)
 
+    qb.join(
+        NicheKeyword,
+        TrendVideo.keyword_id == NicheKeyword.id,
+    )
+
+    qb.filter(
+        NicheKeyword.niche_id == niche_id,
+        TrendVideo.view_count >= min_views if min_views else None,
+    )
+
+    # ✅ Build query
     base_query = (
-        qb.join((NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id))
+        QueryBuilder(TrendVideo)
+        .join(NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id)
         .filter(
             NicheKeyword.niche_id == niche_id,
             TrendVideo.view_count >= min_views if min_views else None,
@@ -41,7 +54,7 @@ async def query_by_niche(
     )
 
     # ✅ Deduplicate using window function
-    deduped_query = deduplicate_videos(base_query)
+    deduped_query, video_columns = deduplicate_videos(base_query)
 
     if isinstance(sort, str):
         sort = sort.split(",")
@@ -59,26 +72,16 @@ async def query_by_niche(
 
         order_by_clause.append(col.desc() if desc else col.asc())
 
-    deduped_query = deduped_query.order_by(*order_by_clause)
-
-    # ✅ Apply sorting + pagination
-    final_query = select(TrendVideo).from_statement(
-        deduped_query.order_by(
-            *[
-                getattr(TrendVideo, f.lstrip("-")).desc()
-                if f.startswith("-")
-                else getattr(TrendVideo, f).asc()
-                for f in sort
-            ]
-        )
-        .offset((page - 1) * size)
-        .limit(size)
+    final_query = (
+        deduped_query.order_by(*order_by_clause).limit(size).offset((page - 1) * size)
     )
 
-    result = await db.execute(final_query)
-    items = result.scalars().all()
-
-    return items
+    return await paginate_query(
+        db=db,
+        query=final_query,
+        page=page,
+        size=size,
+    )
 
 
 def deduplicate_videos(base_query):

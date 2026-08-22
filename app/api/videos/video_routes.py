@@ -9,6 +9,7 @@ from app.schemas.trend_video import (
     TranscriptContentOut,
     TranscriptContentUpdateIn,
     TrendVideoOut,
+    TrendVideoPaginated,
 )
 from app.services.yt_video import (
     create_manual_transcript,
@@ -45,7 +46,7 @@ async def get_keyword_videos(
     return videos or []
 
 
-@router.get("/niches/{niche_id}", response_model=list[TrendVideoOut])
+@router.get("/niches/{niche_id}", response_model=TrendVideoPaginated)
 async def get_niche_videos_route(
     niche_id: int,
     sort: str = "score",

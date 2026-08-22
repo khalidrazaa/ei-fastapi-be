@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 
 class QueryBuilder:
@@ -6,9 +6,8 @@ class QueryBuilder:
         self.model = model
         self.query = select(model)
 
-    def join(self, *joins):
-        for j in joins:
-            self.query = self.query.join(*j)
+    def join(self, *args):
+        self.query = self.query.join(*args)
         return self
 
     def filter(self, *conditions):
@@ -17,15 +16,14 @@ class QueryBuilder:
                 self.query = self.query.where(cond)
         return self
 
-    def sort(self, sort_fields: list[str]):
-        for field in sort_fields:
-            desc = field.startswith("-")
-            col = getattr(self.model, field.lstrip("-"))
-            self.query = self.query.order_by(col.desc() if desc else col.asc())
+    def sort(self, *order_by):
+        if order_by:
+            self.query = self.query.order_by(*order_by)
         return self
 
-    def paginate(self, page: int, limit: int):
-        self.query = self.query.offset((page - 1) * limit).limit(limit)
+    def paginate(self, page: int, size: int):
+        offset = (page - 1) * size
+        self.query = self.query.offset(offset).limit(size)
         return self
 
     def with_cte(self, cte):
