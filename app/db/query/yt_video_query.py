@@ -80,6 +80,8 @@ async def query_by_niche(
         .order_by(*order_by_clause)
     )
 
+    print(final_query)
+
     # 5. Pagination + total + metadata
     return await paginate_query(
         db=db,
