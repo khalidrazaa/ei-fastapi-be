@@ -5,7 +5,6 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.niche import NicheKeyword
 from app.db.models.trend_video import TrendVideo
 
 STAGE_RANK = {
@@ -73,7 +72,6 @@ def _video_sort_key(video: TrendVideo, sort: str) -> tuple:
 def _apply_video_filters(
     query,
     *,
-    sort: str = "score",
     min_views: int = 0,
     days: int | None = None,
 ):
@@ -344,7 +342,6 @@ async def get_videos_by_keyword(
     query = select(TrendVideo).where(TrendVideo.keyword_id == keyword_id)
     query = _apply_video_filters(
         query,
-        sort=sort,
         min_views=min_views,
         days=days,
     )
@@ -371,42 +368,6 @@ async def get_recent_videos(db: AsyncSession, hours=24):
     return result.all()
 
 
-async def get_videos_by_niche(
-    db: AsyncSession,
-    niche_id: int,
-    sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
-    skip: int = 0,
-    limit: int = 20,
-):
-    query = (
-        select(TrendVideo)
-        .join(NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id)
-        .where(NicheKeyword.niche_id == niche_id)
-    )
-    query = _apply_video_filters(
-        query,
-        sort=sort,
-        min_views=min_views,
-        days=days,
-    )
-
-    result = await db.execute(query)
-
-    deduped_by_video_id: dict[str, TrendVideo] = {}
-    for video in result.scalars():
-        existing = deduped_by_video_id.get(video.youtube_video_id)
-        if existing is None or video.virality_score > existing.virality_score:
-            deduped_by_video_id[video.youtube_video_id] = video
-
-    return sorted(
-        deduped_by_video_id.values(),
-        key=lambda video: _video_sort_key(video, sort),
-        reverse=True,
-    )
-
-
 async def get_popular_videos(
     db: AsyncSession,
     sort: str = "score",
@@ -425,7 +386,6 @@ async def get_popular_videos(
 
     query = _apply_video_filters(
         query,
-        sort=sort,
         min_views=min_views,
         days=days,
     )
