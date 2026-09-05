@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
 
 from sqlalchemy import func, select
@@ -50,6 +50,8 @@ async def query_by_niche(
     niche_id: int,
     min_views: int = 0,
     published_age: PublishedAge | None = None,
+    published_from: date | None = None,
+    published_to: date | None = None,
     trend_stages: list[str] | None = None,
     region_codes: list[str] | None = None,
     sources: list[str] | None = None,
@@ -62,7 +64,19 @@ async def query_by_niche(
     page: int = 1,
     size: int = 20,
 ):
-    published_from, published_before = published_date_range(published_age)
+    age_from, age_before = published_date_range(published_age)
+    range_start = min(published_from, published_to) if published_from and published_to else published_from
+    range_end = max(published_from, published_to) if published_from and published_to else published_to
+    date_from = (
+        datetime.combine(range_start, time.min, tzinfo=timezone.utc)
+        if range_start
+        else age_from
+    )
+    date_before = (
+        datetime.combine(range_end + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        if range_end
+        else age_before
+    )
     normalized_region_codes = (
         [region_code.upper() for region_code in region_codes]
         if region_codes
@@ -75,11 +89,10 @@ async def query_by_niche(
             TrendVideo.keyword_id == NicheKeyword.id,
         )
         .join(Niche, NicheKeyword.niche_id == Niche.id)
+        .filter_date_range(TrendVideo.published_at, date_from, date_before)
         .filter(
             NicheKeyword.niche_id == niche_id,
             TrendVideo.view_count >= min_views if min_views else None,
-            TrendVideo.published_at >= published_from if published_from else None,
-            TrendVideo.published_at < published_before if published_before else None,
             TrendVideo.trend_stage.in_(trend_stages) if trend_stages else None,
             func.upper(Niche.region_code).in_(normalized_region_codes)
             if normalized_region_codes

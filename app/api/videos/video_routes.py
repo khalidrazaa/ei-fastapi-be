@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +63,8 @@ async def get_niche_videos_route(
     niche_id: int,
     min_views: int = Query(0, ge=0),
     published_age: PublishedAge | None = None,
+    published_from: date | None = Query(None),
+    published_to: date | None = Query(None),
     trend_stage: list[str] | None = Query(None),
     region_code: list[str] | None = Query(None),
     source: list[str] | None = Query(None),
@@ -79,6 +83,8 @@ async def get_niche_videos_route(
         niche_id=niche_id,
         min_views=min_views,
         published_age=published_age,
+        published_from=published_from,
+        published_to=published_to,
         trend_stages=_split_query_values(trend_stage),
         region_codes=_split_query_values(region_code),
         sources=_split_query_values(source),

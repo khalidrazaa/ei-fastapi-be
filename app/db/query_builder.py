@@ -16,6 +16,13 @@ class QueryBuilder:
                 self.query = self.query.where(cond)
         return self
 
+    def filter_date_range(self, column, start=None, end_exclusive=None):
+        if start is not None:
+            self.query = self.query.where(column >= start)
+        if end_exclusive is not None:
+            self.query = self.query.where(column < end_exclusive)
+        return self
+
     def sort(self, *order_by):
         if order_by:
             self.query = self.query.order_by(*order_by)
