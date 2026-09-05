@@ -2,12 +2,12 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.query.yt_video_query import PublishedAge, query_by_niche
+from app.db.query.yt_video_query import PublishedAge, query_videos
 
 
-async def get_videos_by_niche_id(
+async def get_video_list(
     db: AsyncSession,
-    niche_id: int,
+    niche_id: int | None = None,
     min_views: int = 0,
     published_age: PublishedAge | None = None,
     published_from: date | None = None,
@@ -24,7 +24,7 @@ async def get_videos_by_niche_id(
     page: int = 1,
     size: int = 20,
 ):
-    return await query_by_niche(
+    return await query_videos(
         db=db,
         niche_id=niche_id,
         min_views=min_views,

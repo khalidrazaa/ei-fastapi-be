@@ -10,24 +10,6 @@ def _normalize_transcript_text(value: str) -> str:
     return "\n".join(lines).strip()
 
 
-async def get_popular_videos(
-    db: AsyncSession,
-    sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
-    region_code: str | None = None,
-    source: str | None = None,
-):
-    return await trend_video_query.get_popular_videos(
-        db=db,
-        sort=sort,
-        min_views=min_views,
-        days=days,
-        region_code=region_code,
-        source=source,
-    )
-
-
 async def get_videos_with_transcripts(
     db: AsyncSession,
 ) -> object:
