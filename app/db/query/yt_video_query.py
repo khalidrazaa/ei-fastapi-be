@@ -45,9 +45,9 @@ def published_date_range(
     return cutoff, current_time
 
 
-async def query_by_niche(
+async def query_videos(
     db: AsyncSession,
-    niche_id: int,
+    niche_id: int | None = None,
     min_views: int = 0,
     published_age: PublishedAge | None = None,
     published_from: date | None = None,
@@ -64,9 +64,11 @@ async def query_by_niche(
     page: int = 1,
     size: int = 20,
 ):
+    """Build both video lists with shared filters and database pagination."""
     age_from, age_before = published_date_range(published_age)
-    range_start = min(published_from, published_to) if published_from and published_to else published_from
-    range_end = max(published_from, published_to) if published_from and published_to else published_to
+    range_start, range_end = published_from, published_to
+    if published_from and published_to:
+        range_start, range_end = sorted((published_from, published_to))
     date_from = (
         datetime.combine(range_start, time.min, tzinfo=timezone.utc)
         if range_start
@@ -82,19 +84,22 @@ async def query_by_niche(
         if region_codes
         else None
     )
+    builder = QueryBuilder(TrendVideo)
+    region_column = TrendVideo.region_code
+    if niche_id is not None:
+        builder = builder.join(
+            NicheKeyword, TrendVideo.keyword_id == NicheKeyword.id
+        ).join(Niche, NicheKeyword.niche_id == Niche.id)
+        region_column = Niche.region_code
+
     base_query = (
-        QueryBuilder(TrendVideo)
-        .join(
-            NicheKeyword,
-            TrendVideo.keyword_id == NicheKeyword.id,
-        )
-        .join(Niche, NicheKeyword.niche_id == Niche.id)
+        builder
         .filter_date_range(TrendVideo.published_at, date_from, date_before)
         .filter(
-            NicheKeyword.niche_id == niche_id,
+            NicheKeyword.niche_id == niche_id if niche_id is not None else None,
             TrendVideo.view_count >= min_views if min_views else None,
             TrendVideo.trend_stage.in_(trend_stages) if trend_stages else None,
-            func.upper(Niche.region_code).in_(normalized_region_codes)
+            func.upper(region_column).in_(normalized_region_codes)
             if normalized_region_codes
             else None,
             TrendVideo.source.in_(sources) if sources else None,
@@ -146,7 +151,7 @@ def deduplicate_videos(base_query):
         func.row_number()
         .over(
             partition_by=TrendVideo.youtube_video_id,
-            order_by=TrendVideo.virality_score.desc(),
+            order_by=(TrendVideo.virality_score.desc(), TrendVideo.id.desc()),
         )
         .label("rank"),
     ).cte("ranked_videos")

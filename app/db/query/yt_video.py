@@ -368,36 +368,6 @@ async def get_recent_videos(db: AsyncSession, hours=24):
     return result.all()
 
 
-async def get_popular_videos(
-    db: AsyncSession,
-    sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
-    region_code: str | None = None,
-    source: str | None = None,
-):
-    query = select(TrendVideo)
-
-    if source and source != "all":
-        query = query.where(TrendVideo.source == source)
-
-    if region_code:
-        query = query.where(TrendVideo.region_code == region_code.upper())
-
-    query = _apply_video_filters(
-        query,
-        min_views=min_views,
-        days=days,
-    )
-
-    result = await db.execute(query)
-    return sorted(
-        result.scalars().all(),
-        key=lambda video: _video_sort_key(video, sort),
-        reverse=True,
-    )
-
-
 async def get_videos_with_transcripts(
     db: AsyncSession,
 ):
