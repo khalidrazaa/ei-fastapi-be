@@ -1,7 +1,10 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.query.yt_video import get_videos_by_keyword
+from app.db.query.yt_video_query import PublishedAge
 from app.db.session import get_db
 from app.schemas.popular_video import PopularVideoOut
 from app.schemas.trend_video import (
@@ -23,13 +26,22 @@ from app.services.yt_video_service.yt_video import get_videos_by_niche_id
 router = APIRouter()
 
 
+def _split_query_values(values: list[str] | None) -> list[str] | None:
+    """Support both repeated params and comma-separated values from the UI."""
+    if not values:
+        return None
+
+    normalized = [item.strip() for value in values for item in value.split(",")]
+    return [item for item in normalized if item] or None
+
+
 @router.get("/keywords/{keyword_id}", response_model=list[TrendVideoOut])
 async def get_keyword_videos(
     keyword_id: int,
     db: AsyncSession = Depends(get_db),
     sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
+    min_views: int = Query(0, ge=0),
+    days: int | None = Query(None, ge=1),
 ):
     """
     Get stored YouTube videos for a keyword.
@@ -49,9 +61,19 @@ async def get_keyword_videos(
 @router.get("/niches/{niche_id}", response_model=TrendVideoPaginated)
 async def get_niche_videos_route(
     niche_id: int,
-    sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
+    min_views: int = Query(0, ge=0),
+    published_age: PublishedAge | None = None,
+    published_from: date | None = Query(None),
+    published_to: date | None = Query(None),
+    trend_stage: list[str] | None = Query(None),
+    region_code: list[str] | None = Query(None),
+    source: list[str] | None = Query(None),
+    category_title: list[str] | None = Query(None),
+    min_score: float | None = Query(None, ge=0),
+    min_speed_score: float | None = Query(None, ge=0),
+    min_breakout_score: float | None = Query(None, ge=0),
+    min_engagement_score: float | None = Query(None, ge=0),
+    min_confidence_score: float | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -59,9 +81,19 @@ async def get_niche_videos_route(
     return await get_videos_by_niche_id(
         db=db,
         niche_id=niche_id,
-        sort=sort,
         min_views=min_views,
-        days=days,
+        published_age=published_age,
+        published_from=published_from,
+        published_to=published_to,
+        trend_stages=_split_query_values(trend_stage),
+        region_codes=_split_query_values(region_code),
+        sources=_split_query_values(source),
+        category_titles=_split_query_values(category_title),
+        min_score=min_score,
+        min_speed_score=min_speed_score,
+        min_breakout_score=min_breakout_score,
+        min_engagement_score=min_engagement_score,
+        min_confidence_score=min_confidence_score,
         page=page,
         size=size,
     )

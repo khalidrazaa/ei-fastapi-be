@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.query import yt_video as trend_video_query
-from app.db.query.yt_video import get_videos_by_niche
 from app.services.article_service import generate_draft_from_video_transcript
 
 
@@ -9,36 +8,6 @@ def _normalize_transcript_text(value: str) -> str:
     normalized = value.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
     lines = [line.rstrip() for line in normalized.split("\n")]
     return "\n".join(lines).strip()
-
-
-async def get_videos_by_niche(
-    db: AsyncSession,
-    niche_id: int,
-    sort: str = "score",
-    min_views: int = 0,
-    days: int | None = None,
-    page: int = 1,
-    size: int = 20,
-):
-    skip = (page - 1) * size
-    items, total = await trend_video_query.get_videos_by_niche(
-        db=db,
-        niche_id=niche_id,
-        sort=sort,
-        min_views=min_views,
-        days=days,
-        skip=skip,
-        limit=size,
-    )
-    return await trend_video_query.get_videos_by_niche(
-        db=db,
-        niche_id=niche_id,
-        sort=sort,
-        min_views=min_views,
-        days=days,
-        skip=skip,
-        limit=size,
-    )
 
 
 async def get_popular_videos(
