@@ -1,5 +1,6 @@
 import re
 
+import phonenumbers
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
@@ -42,9 +43,20 @@ class ContactRequest(BaseModel):
         if not trimmed.startswith("+"):
             raise ValueError("Phone must include a leading + and country code.")
         normalized = re.sub(r"[ ()-]", "", trimmed)
-        if re.fullmatch(r"\+[1-9][0-9]{6,14}", normalized) is None:
-            raise ValueError("Phone must contain 7 to 15 international digits.")
-        return normalized
+        if re.fullmatch(r"\+[1-9][0-9]{0,14}", normalized) is None:
+            raise ValueError("Phone must contain at most 15 international digits.")
+        try:
+            number = phonenumbers.parse(normalized, None)
+        except phonenumbers.NumberParseException:
+            raise ValueError("Enter a valid international phone number.") from None
+        if not phonenumbers.is_valid_number(number):
+            raise ValueError("Enter a valid international phone number.")
+        canonical = phonenumbers.format_number(
+            number, phonenumbers.PhoneNumberFormat.E164
+        )
+        if re.fullmatch(r"\+[1-9][0-9]{0,14}", canonical) is None:
+            raise ValueError("Phone must contain at most 15 international digits.")
+        return canonical
 
 
 class ContactResponse(BaseModel):

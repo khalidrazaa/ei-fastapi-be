@@ -68,8 +68,9 @@ class ContactRouteTests(unittest.TestCase):
         cases = [
             (None, None), ("", None), ("   ", None),
             ("  +1 (202) 555-0198  ", "+12025550198"),
-            ("+1234567", "+1234567"),
-            ("+123456789012345", "+123456789012345"),
+            ("+91 98765-43210", "+919876543210"),
+            ("+44 020-7946-0018", "+442079460018"),
+            ("+39 02-3661-8300", "+390236618300"),
         ]
         for supplied, expected in cases:
             with self.subTest(phone=supplied), patch.object(
@@ -99,6 +100,43 @@ class ContactRouteTests(unittest.TestCase):
             contact_service, "send_contact_message", new_callable=AsyncMock
         ) as service:
             for phone in invalid:
+                with self.subTest(phone=phone):
+                    self.assertEqual(
+                        self.post({**self.payload, "phone": phone}).status_code, 422
+                    )
+        service.assert_not_awaited()
+
+    def test_country_metadata_accepts_fixed_and_mobile_numbers(self):
+        fixtures = [
+            "+919876543210", "+12025550123", "+16045550123",
+            "+442079460018", "+390236618300", "+4930123456",
+            "+971501234567", "+61412345678", "+6581234567",
+            "+33123456789", "+966501234567", "+27821234567",
+            "+358401234567", "+80012345678",
+        ]
+        with patch.object(
+            contact_service, "send_contact_message", new_callable=AsyncMock
+        ) as service:
+            for phone in fixtures:
+                with self.subTest(phone=phone):
+                    self.assertEqual(
+                        self.post({**self.payload, "phone": phone}).status_code, 200
+                    )
+                    self.assertEqual(service.call_args.args[0].phone, phone)
+
+    def test_country_metadata_rejects_invalid_lengths_prefixes_and_codes(self):
+        fixtures = [
+            "+91987654321", "+9198765432101",  # India length
+            "+1202555012", "+120255501234",  # US length
+            "+11234567890", "+12001230101",  # invalid NANP area code
+            "+44207946001", "+4420794600181",  # UK length
+            "+4930", "+1911",  # short national/service numbers
+            "+999123456789", "+1234567", "+123456789012345",
+        ]
+        with patch.object(
+            contact_service, "send_contact_message", new_callable=AsyncMock
+        ) as service:
+            for phone in fixtures:
                 with self.subTest(phone=phone):
                     self.assertEqual(
                         self.post({**self.payload, "phone": phone}).status_code, 422

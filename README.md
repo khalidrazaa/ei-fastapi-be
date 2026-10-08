@@ -43,13 +43,17 @@ The generate endpoint returns a one-time `api_key` value. Save it in frontend `.
 Fields are trimmed and validated: name 1–80 characters, valid email up to
 254 characters, message 1–5000 characters. Only explainit.tech is accepted.
 Optional `phone` may be omitted, null, or blank. A supplied number must begin
-with `+`, have a nonzero first digit and 7–15 total ASCII digits, and be at
-most 40 raw characters. ASCII spaces, parentheses, and hyphens are allowed
-and removed before forwarding (for example, `+12025550198`). Letters,
+with `+`, use ASCII digits, and be at most 40 raw characters and 15 international
+digits. ASCII spaces, parentheses, and hyphens are allowed. The maintained
+Python `phonenumbers` library validates calling codes, national lengths, and
+number prefixes against Google's libphonenumber metadata, accepting valid
+fixed-line and mobile numbers. It returns canonical E.164 (for example,
+`+44 020-7946-0018` becomes `+442079460018`, while Italy's significant leading
+zero is retained). Unknown calling codes, invalid numbers, letters,
 extensions, control characters, multiple plus signs, and non-string values
-are rejected. This validates international formatting, not whether a number
-is allocated or reachable. Phone appears in the plain-text email only when
-provided; submissions without it continue to work.
+are rejected with 422. This checks numbering-plan validity, not whether a
+specific number is assigned or reachable. Phone appears in the plain-text
+email only when provided; submissions without it continue to work.
 The recipient is server-configured `CONTACT_EMAIL_TO` (default
 `core@explainit.tech`). Email uses the existing `BREVO_URL`, `BREVO_API_KEY`,
 and verified `EMAIL_USERNAME` sender. The visitor is Reply-To; content is
