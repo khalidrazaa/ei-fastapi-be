@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.admin import admin_routes
 from app.api.article import article_routes, public_article_routes
 from app.api.auth import auth_routes
+from app.api.contact import public_contact_routes
 from app.api.niche import niche_routes
 from app.api.settings import settings_routes
 from app.api.trend_keyword import keyword_routes
@@ -41,4 +42,7 @@ router.include_router(
 )
 router.include_router(
     public_article_routes.router, prefix="/public/articles", tags=["public-articles"]
+)
+router.include_router(
+    public_contact_routes.router, prefix="/public/contact", tags=["public-contact"]
 )

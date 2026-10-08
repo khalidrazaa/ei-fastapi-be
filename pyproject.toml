@@ -113,6 +113,7 @@ dependencies = [
     "google-api-python-client>=2.190.0",
     "alembic>=1.18.4",
     "apscheduler>=3.11.2",
+    "phonenumbers==9.0.41",
 ]
 
 [tool.ruff]

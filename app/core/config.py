@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     PORT : int
     BREVO_API_KEY : str
     BREVO_URL : str
+    CONTACT_EMAIL_TO: str = "core@explainit.tech"
     GOOGLE_AI_STUDIO_API_KEY : str
     OPENAI_API_KEY: str | None = None
     OPENAI_DRAFT_MODEL: str = "gpt-5-mini"

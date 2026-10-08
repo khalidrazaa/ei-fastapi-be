@@ -31,6 +31,47 @@ The generate endpoint returns a one-time `api_key` value. Save it in frontend `.
 
 `PUBLIC_APP_KEYS=...` in `.env` is now optional fallback compatibility only.
 
+## Contact email API
+
+`POST /v1/public/contact?host_site=explainit.tech` uses the existing
+`X-Public-App-Key` authentication. The actual application prefix is `/v1`.
+
+```json
+{"name": "Your name", "email": "you@example.com", "phone": "+1 (202) 555-0198", "message": "Your message"}
+```
+
+Fields are trimmed and validated: name 1–80 characters, valid email up to
+254 characters, message 1–5000 characters. Only explainit.tech is accepted.
+Optional `phone` may be omitted, null, or blank. A supplied number must begin
+with `+`, use ASCII digits, and be at most 40 raw characters and 15 international
+digits. ASCII spaces, parentheses, and hyphens are allowed. The maintained
+Python `phonenumbers` library validates calling codes, national lengths, and
+number prefixes against Google's libphonenumber metadata, accepting valid
+fixed-line and mobile numbers. It returns canonical E.164 (for example,
+`+44 020-7946-0018` becomes `+442079460018`, while Italy's significant leading
+zero is retained). Unknown calling codes, invalid numbers, letters,
+extensions, control characters, multiple plus signs, and non-string values
+are rejected with 422. This checks numbering-plan validity, not whether a
+specific number is assigned or reachable. Phone appears in the plain-text
+email only when provided; submissions without it continue to work.
+The recipient is server-configured `CONTACT_EMAIL_TO` (default
+`core@explainit.tech`). Email uses the existing `BREVO_URL`, `BREVO_API_KEY`,
+and verified `EMAIL_USERNAME` sender. The visitor is Reply-To; content is
+plain text. Public keys and provider credentials remain server-side.
+
+HTTP 200 returns `{"status": true, "message": "Your message has been submitted."}`
+only after Brevo returns 201 with a message ID. This confirms provider
+acceptance, not inbox delivery. Errors: 422 validation, 401/403 authentication
+or host mismatch, 429 cooldown, 503 missing/invalid email configuration,
+502 provider rejection/network failure, and 504 timeout. Provider details
+and credentials are not included in error responses.
+
+Basic abuse protection limits one attempt per email per 60 seconds and
+20 attempts per 60 seconds per backend process, including failed sends.
+HTTP 429 includes `Retry-After`. State is bounded, held in memory, resets
+on restart, and is not shared across workers; production-wide limits
+should also be enforced at the public proxy or in a shared store.
+
 ## Migrations
 
 ```bash
