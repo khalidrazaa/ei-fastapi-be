@@ -11,17 +11,20 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.contact.public_contact_routes import router
+from app.api.contact.public_contact_routes import router, send_public_contact_message
 from app.core.public_api_security import get_db
 from app.schemas.contact import ContactRequest
 from app.services import contact_service
 from app.utils import email as email_client
 
 
+CONTACT_PATH = "/v1/public/contact"
+
+
 class ContactRouteTests(unittest.TestCase):
     def setUp(self):
         app = FastAPI()
-        app.include_router(router, prefix="/v1/public/contact")
+        app.include_router(router, prefix=CONTACT_PATH)
         self.db = AsyncMock()
         app.dependency_overrides[get_db] = lambda: self.db
         self.client = TestClient(app)
@@ -31,7 +34,7 @@ class ContactRouteTests(unittest.TestCase):
             "message": " A question about dashboards. ",
         }
         self.headers = {"X-Public-App-Key": "test-app-key"}
-        self.path = "/v1/public/contact?host_site=explainit.tech"
+        self.path = f"{CONTACT_PATH}?host_site=explainit.tech"
         self.auth = self.enterContext(
             patch(
                 "app.core.public_api_security.validate_public_api_key",
@@ -210,7 +213,7 @@ class ContactRouteTests(unittest.TestCase):
         self.send.assert_not_awaited()
 
     def test_other_authorized_host_is_still_rejected(self):
-        response = self.post(path="/v1/public/contact?host_site=other.example")
+        response = self.post(path=f"{CONTACT_PATH}?host_site=other.example")
         self.assertEqual(response.status_code, 403)
         self.window.assert_not_awaited()
         self.add.assert_not_awaited()
@@ -241,20 +244,26 @@ class ContactRouteTests(unittest.TestCase):
 
         async def send(**content):
             operations.append("email")
-            self.assertEqual(content, {
-                "name": "Visitor", "email": "visitor@example.com",
-                "message": "A question about dashboards.",
-                "phone": None, "subject": None,
-            })
+            self.assertEqual(
+                content,
+                {
+                    "name": "Visitor",
+                    "email": "visitor@example.com",
+                    "message": "A question about dashboards.",
+                    "phone": None,
+                    "subject": None,
+                },
+            )
 
         self.add.side_effect = add
         self.db.commit.side_effect = commit
         self.send.side_effect = send
         response = self.post()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {
-            "status": True, "message": "Your message has been submitted."
-        })
+        self.assertEqual(
+            response.json(),
+            {"status": True, "message": "Your message has been submitted."},
+        )
         self.assertEqual(operations, ["lead", "commit", "email"])
         self.send.assert_awaited_once()
         self.db.rollback.assert_not_awaited()
@@ -275,9 +284,10 @@ class ContactRouteTests(unittest.TestCase):
                 with self.assertLogs(contact_service.logger, level="WARNING") as logs:
                     response = self.post()
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.json(), {
-                    "status": True, "message": "Your message has been submitted."
-                })
+                self.assertEqual(
+                    response.json(),
+                    {"status": True, "message": "Your message has been submitted."},
+                )
                 self.db.commit.assert_awaited_once()
                 self.db.rollback.assert_not_awaited()
                 self.send.assert_awaited_once()
@@ -393,7 +403,7 @@ class ContactRouteTests(unittest.TestCase):
                 payload = dict(self.payload)
                 del payload[missing]
                 self.assertEqual(self.post(payload).status_code, 422)
-            self.assertEqual(self.post(path="/v1/public/contact").status_code, 422)
+            self.assertEqual(self.post(path=CONTACT_PATH).status_code, 422)
         service.assert_not_awaited()
 
     def test_maximum_lengths_are_valid(self):
@@ -670,6 +680,24 @@ class ContactRateLimitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.retry_after, 50)
         self.add.assert_not_awaited()
         self.send.assert_not_awaited()
+
+
+class ContactAppRoutingTests(unittest.TestCase):
+    def test_production_app_registers_the_versioned_contact_endpoint(self):
+        # Inspect the real app without running startup jobs or external services.
+        from app.main import app
+
+        contact_routes = [
+            route
+            for route in app.routes
+            if getattr(route, "endpoint", None) is send_public_contact_message
+        ]
+        self.assertEqual(len(contact_routes), 1)
+        self.assertEqual(contact_routes[0].path, CONTACT_PATH)
+        self.assertEqual(contact_routes[0].methods, {"POST"})
+        registered_paths = {getattr(route, "path", None) for route in app.routes}
+        self.assertNotIn("/public/contact", registered_paths)
+        self.assertNotIn("/v1/contact", registered_paths)
 
 
 if __name__ == "__main__":
