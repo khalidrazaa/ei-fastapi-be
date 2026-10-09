@@ -12,6 +12,7 @@ from .draft_prompt import DraftPrompt
 from .host_site import HostSite
 from .article_comment import ArticleComment
 from .public_api_key import PublicApiKey
+from .lead import Lead
 
 __all__ = [
     "AdminUser",
@@ -30,4 +31,5 @@ __all__ = [
     "HostSite",
     "ArticleComment",
     "PublicApiKey",
+    "Lead",
 ]  #  include all models

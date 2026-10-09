@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
+from app.core.admin_security import require_admin
 from app.db.session import get_db
-from app.db.models.admin_user import AdminUser  # your actual Admin model
-from app.schemas.admin_user import AdminUserCreate  # your actual schema
+from app.schemas.admin_user import AdminUserCreate
 from app.services.admin_service import create_admin_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.post("/create", status_code=201)

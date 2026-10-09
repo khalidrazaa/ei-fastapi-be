@@ -59,24 +59,32 @@ The recipient is server-configured `CONTACT_EMAIL_TO` (default
 and verified `EMAIL_USERNAME` sender. The visitor is Reply-To; content is
 plain text. Public keys and provider credentials remain server-side.
 
-HTTP 200 returns `{"status": true, "message": "Your message has been submitted."}`
-only after Brevo returns 201 with a message ID. This confirms provider
-acceptance, not inbox delivery. Errors: 422 validation, 401/403 authentication
-or host mismatch, 429 cooldown, 503 missing/invalid email configuration,
-502 provider rejection/network failure, and 504 timeout. Provider details
-and credentials are not included in error responses.
+Each valid enquiry is committed to PostgreSQL first, then the API attempts
+to send the email before responding. HTTP 200 returns
+`{"status": true, "message": "Your message has been submitted."}` once the lead
+is saved, even if the email attempt fails. Check the admin Leads page for all
+saved enquiries. Email failures are logged without contact content or provider
+responses; there are no automatic retries or separate email processes.
 
-Basic abuse protection limits one attempt per email per 60 seconds and
-20 attempts per 60 seconds per backend process, including failed sends.
-HTTP 429 includes `Retry-After`. State is bounded, held in memory, resets
-on restart, and is not shared across workers; production-wide limits
-should also be enforced at the public proxy or in a shared store.
+Errors: 422 validation, 401/403 authentication or host mismatch, 429 cooldown,
+and 503 if persistence fails. PostgreSQL enforces one accepted enquiry per email
+per 60 seconds and 20 accepted enquiries per 60 seconds across API processes.
+HTTP 429 includes `Retry-After`; later enquiries from the same email create
+distinct leads. Optional subject and source attribution, admin access,
+configuration and migration steps are documented in
+[docs/lead-management.md](docs/lead-management.md).
 
 ## Migrations
 
 ```bash
 python -m migrations.generate_sql_from_models
-python -m migration.migration_script
+python -m migrations.migration_script
 ```
 
-Or run Alembic as per your current workflow.
+To apply one reviewed file without replaying untracked historical SQL, use
+`python -m migrations.migration_script --file 009_update_tables.sql`.
+The runner checks `DB_NAME` and commits each file together with its history entry.
+
+Use Alembic as per your current workflow. SQL history and Alembic history are
+separate; if applying an equivalent SQL migration, verify its schema before
+recording the corresponding Alembic revision.

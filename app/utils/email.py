@@ -71,7 +71,8 @@ class ContactEmailTimeoutError(Exception):
 
 
 async def send_contact_email(
-    *, name: str, email: str, message: str, phone: str | None = None
+    *, name: str, email: str, message: str, phone: str | None = None,
+    subject: str | None = None,
 ) -> None:
     """Send plain text, using the verified site sender and visitor Reply-To."""
     api_key = settings.BREVO_API_KEY.strip()
@@ -93,6 +94,8 @@ async def send_contact_email(
     contact_details = f"Name: {name}\nEmail: {email}"
     if phone:
         contact_details += f"\nPhone: {phone}"
+    if subject:
+        contact_details += f"\nSubject: {subject}"
     payload = {
         "sender": {"email": sender, "name": "explainit"},
         "to": [{"email": recipient}],

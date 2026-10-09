@@ -1,18 +1,23 @@
-from collections import deque
+import asyncio
+import logging
+from datetime import timedelta
 from math import ceil
-from threading import Lock
-from time import monotonic
 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.query import lead as lead_query
 from app.schemas.contact import ContactRequest
-from app.utils.email import (
-    ContactEmailConfigurationError as ContactEmailConfigurationError,
-    ContactEmailProviderError as ContactEmailProviderError,
-    ContactEmailTimeoutError as ContactEmailTimeoutError,
-    send_contact_email,
-)
+from app.utils.email import send_contact_email
+
+logger = logging.getLogger(__name__)
 
 
 class ContactHostError(Exception):
+    pass
+
+
+class ContactPersistenceError(Exception):
     pass
 
 
@@ -22,49 +27,49 @@ class ContactRateLimitError(Exception):
         super().__init__("Contact submission limit reached.")
 
 
-class _ContactRateLimiter:
-    """Small process-local cap; shared limits require a proxy or shared store."""
-
-    def __init__(self, *, window_seconds: int = 60, max_attempts: int = 20):
-        self.window_seconds = window_seconds
-        self.max_attempts = max_attempts
-        self._attempts: deque[float] = deque()
-        self._emails: dict[str, float] = {}
-        self._lock = Lock()
-
-    def take(self, email: str) -> None:
-        email_key = email.casefold()
-        with self._lock:
-            now = monotonic()
-            cutoff = now - self.window_seconds
-            while self._attempts and self._attempts[0] <= cutoff:
-                self._attempts.popleft()
-            self._emails = {
-                key: timestamp
-                for key, timestamp in self._emails.items()
-                if timestamp > cutoff
-            }
-            previous = self._emails.get(email_key)
-            if previous is not None:
-                raise ContactRateLimitError(
-                    max(1, ceil(previous + self.window_seconds - now))
-                )
-            if len(self._attempts) >= self.max_attempts:
-                raise ContactRateLimitError(
-                    max(1, ceil(self._attempts[0] + self.window_seconds - now))
-                )
-            self._emails[email_key] = now
-            self._attempts.append(now)
-
-
-_rate_limiter = _ContactRateLimiter()
-
-
-async def send_contact_message(payload: ContactRequest, host_site: str) -> None:
+async def send_contact_message(
+    payload: ContactRequest,
+    host_site: str,
+    db: AsyncSession,
+) -> None:
     if host_site != "explainit.tech":
         raise ContactHostError("Contact is only available for explainit.tech.")
-    _rate_limiter.take(str(payload.email))
-    await send_contact_email(
-        name=payload.name, email=str(payload.email), message=payload.message,
-        phone=payload.phone,
-    )
+    try:
+        async with lead_query.submission_transaction(db):
+            now, count, oldest, previous = await lead_query.get_submission_window(
+                db, str(payload.email), 60
+            )
+            blocked_until = None
+            if previous is not None:
+                blocked_until = previous + timedelta(seconds=60)
+            if count >= 20 and oldest is not None:
+                global_expiry = oldest + timedelta(seconds=60)
+                blocked_until = max(blocked_until or global_expiry, global_expiry)
+            if blocked_until is not None:
+                raise ContactRateLimitError(
+                    max(1, ceil((blocked_until - now).total_seconds()))
+                )
+            values = payload.model_dump(exclude={"website"})
+            values.update(host_site=host_site, submitted_at=now, updated_at=now)
+            lead = await lead_query.add_lead(db, values)
+            lead_id = lead.id
+    except SQLAlchemyError:
+        raise ContactPersistenceError() from None
+
+    # The enquiry is committed before contacting the email provider.
+    try:
+        await asyncio.wait_for(
+            send_contact_email(
+                name=payload.name,
+                email=str(payload.email),
+                message=payload.message,
+                phone=payload.phone,
+                subject=payload.subject,
+            ),
+            timeout=10,
+        )
+    except Exception as exc:
+        # Avoid logging enquiry content, addresses or provider response bodies.
+        logger.warning(
+            "Contact email failed lead=%s error=%s", lead_id, type(exc).__name__
+        )

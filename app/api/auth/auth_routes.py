@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.session import get_db
-from app.schemas.auth import OTPRequest, OTPVerifyRequest, LoginResponse
+from app.schemas.auth import LoginResponse, OTPRequest, OTPVerifyRequest
 from app.services.auth_service import send_otp_service, verify_otp_service
-from app.utils.cookies import clear_access_cookie
+from app.utils.cookies import clear_access_cookie, set_access_cookie
 
 router = APIRouter()
 
@@ -15,18 +16,12 @@ async def send_otp(payload: OTPRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/verify-otp", response_model=LoginResponse)
 async def verify_otp(
-    payload: OTPVerifyRequest, response: Response, db: AsyncSession = Depends(get_db)
+    payload: OTPVerifyRequest, request: Request, response: Response,
+    db: AsyncSession = Depends(get_db),
 ):
     result = await verify_otp_service(payload.email, payload.otp, db)
 
-    response.set_cookie(
-        key="access_token",
-        value=result["access_token"],
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        max_age=60 * 60 * 24,
-    )
+    set_access_cookie(response, result["access_token"], request)
 
     return {
         "status": True,
