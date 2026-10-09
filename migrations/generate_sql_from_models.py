@@ -1,24 +1,22 @@
 import os
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.schema import CreateTable, CreateColumn
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.engine import make_url
+from sqlalchemy.schema import CreateColumn, CreateIndex, CreateTable
 
-from app.db.session import Base
-import app.db.models.admin_user
-import app.db.models.email_otp
-import app.db.models.token
-import app.db.models.keyword
-import app.db.models.article
-import app.db.models.trends
-
+from app.db.base import Base
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not set in .env or environment variables")
+    raise ValueError("ALEMBIC_DATABASE_URL or DATABASE_URL must be set.")
 
-engine = create_engine(DATABASE_URL)
+database_url = make_url(DATABASE_URL)
+if database_url.drivername == "postgresql+asyncpg":
+    database_url = database_url.set(drivername="postgresql+psycopg2")
+engine = create_engine(database_url)
 inspector = inspect(engine)
 
 # Folder where .sql files will be saved
@@ -46,14 +44,17 @@ for table in Base.metadata.sorted_tables:
         for col in table.columns:
             if col.name not in existing_cols:
                 statements.append(
-                    f"ALTER TABLE {table_name} ADD COLUMN {CreateColumn(col).compile(engine)};"
+                    f"ALTER TABLE {table_name} ADD COLUMN "
+                    f"{CreateColumn(col).compile(engine)};"
                 )
     else:
         # Table does not exist → full CREATE TABLE
         statements.append(str(CreateTable(table).compile(engine)) + ";")
+        for index in sorted(table.indexes, key=lambda item: item.name):
+            statements.append(str(CreateIndex(index).compile(engine)) + ";")
 
 # Write migration SQL
 with open(migration_file, "w", encoding="utf-8") as f:
     f.write("\n\n".join(statements))
 
-print(f"✅ Migration SQL generated at {migration_file}")
+print(f"Migration SQL generated at {migration_file}")
