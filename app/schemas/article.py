@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -104,3 +104,14 @@ class ArticleDraftGenerateRequest(BaseModel):
     provider: Literal["gemini", "chatgpt"] = "gemini"
     prompt: Optional[str] = None
     additional_context: Optional[str] = None
+
+
+class ArticleBulkDeleteRequest(BaseModel):
+    article_ids: list[Annotated[int, Field(strict=True, gt=0)]] = Field(
+        min_length=1, max_length=500
+    )
+
+
+class ArticleDeleteResponse(BaseModel):
+    deleted_ids: list[int]
+    deleted_count: int

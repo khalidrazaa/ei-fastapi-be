@@ -283,6 +283,31 @@ async def get_article(
     return article
 
 
+async def delete_articles(
+    db: AsyncSession, article_ids: list[int]
+) -> dict[str, Any]:
+    requested_ids = list(dict.fromkeys(article_ids))
+    try:
+        existing_ids = set(
+            await article_query.get_article_ids_for_update(db, requested_ids)
+        )
+        missing_ids = [value for value in requested_ids if value not in existing_ids]
+        if missing_ids:
+            identifiers = ", ".join(str(value) for value in missing_ids)
+            raise LookupError(
+                f"Articles not found: {identifiers}. No articles were deleted."
+            )
+
+        deleted_ids = set(await article_query.delete_articles(db, requested_ids))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    ordered_ids = [value for value in requested_ids if value in deleted_ids]
+    return {"deleted_ids": ordered_ids, "deleted_count": len(ordered_ids)}
+
+
 async def list_published_articles_for_host(
     db: AsyncSession,
     *,

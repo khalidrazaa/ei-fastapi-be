@@ -1,12 +1,33 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.article import Article
+from app.db.query_builder import QueryBuilder
 
 
 async def get_article_by_id(db: AsyncSession, article_id: int) -> Article | None:
     result = await db.execute(select(Article).where(Article.id == article_id))
     return result.scalar_one_or_none()
+
+
+async def get_article_ids_for_update(
+    db: AsyncSession, article_ids: list[int]
+) -> list[int]:
+    result = await db.execute(
+        select(Article.id)
+        .where(Article.id.in_(article_ids))
+        .order_by(Article.id)
+        .with_for_update()
+    )
+    return list(result.scalars().all())
+
+
+async def delete_articles(db: AsyncSession, article_ids: list[int]) -> list[int]:
+    # Related comments are removed by their ON DELETE CASCADE foreign key.
+    result = await db.execute(
+        delete(Article).where(Article.id.in_(article_ids)).returning(Article.id)
+    )
+    return list(result.scalars().all())
 
 
 async def get_article_by_slug(db: AsyncSession, slug: str) -> Article | None:
@@ -21,13 +42,16 @@ async def list_articles(
     host_site: str | None = None,
     limit: int = 100,
 ) -> list[Article]:
-    query = select(Article)
-    if status:
-        query = query.where(Article.status == status)
-    if host_site:
-        query = query.where(Article.host_site == host_site)
-
-    query = query.order_by(Article.created_at.desc()).limit(limit)
+    query = (
+        QueryBuilder(Article)
+        .filter(
+            Article.status == status if status else None,
+            Article.host_site == host_site if host_site else None,
+        )
+        .sort(Article.created_at.desc())
+        .build()
+        .limit(limit)
+    )
 
     result = await db.execute(query)
     return result.scalars().all()

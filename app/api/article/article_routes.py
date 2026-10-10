@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_security import require_admin
 from app.db.session import get_db
 from app.schemas.article import (
+    ArticleBulkDeleteRequest,
+    ArticleDeleteResponse,
     ArticleDraftGenerateRequest,
     ArticleResponse,
     ArticleUpdate,
@@ -14,9 +19,41 @@ from app.services.yt_video import generate_article_draft_for_video
 router = APIRouter()
 
 
+@router.post(
+    "/bulk-delete",
+    response_model=ArticleDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def delete_articles_route(
+    payload: ArticleBulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await article_service.delete_articles(db, payload.article_ids)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete(
+    "/{article_id}",
+    response_model=ArticleDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def delete_article_route(
+    article_id: Annotated[int, Path(gt=0)],
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await article_service.delete_articles(db, [article_id])
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("", response_model=list[ArticleResponse])
 async def list_articles_route(
-    status: str | None = None,
+    status: str | None = Query(
+        default=None, description="Filter articles by draft or published status."
+    ),
     limit: int = Query(default=100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
