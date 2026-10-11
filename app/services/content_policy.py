@@ -23,7 +23,7 @@ def safe_url(value):
 
 def fingerprint(article):
     if not article: return None
-    fields = ['title', 'slug', 'content', 'excerpt', 'meta_description', 'tags', 'status', 'host_site', 'updated_at']
+    fields = ['title', 'slug', 'content', 'excerpt', 'meta_description', 'tags', 'status', 'host_site', 'updated_at', 'seo_title', 'category', 'subcategory', 'keywords', 'language', 'schema_type', 'open_graph_title', 'open_graph_description']
     return hashlib.sha256(json.dumps({k: str(getattr(article, k, None)) for k in fields}, sort_keys=True).encode()).hexdigest()
 
 def overlaps(title, question, candidates):

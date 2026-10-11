@@ -86,3 +86,6 @@ async def claim(db):
         job.lease_until = now() + timedelta(minutes=10)
     await db.commit()
     return job
+
+async def generated_topic_ids(db):
+    return set((await db.execute(select(ContentVersion.topic_id).distinct())).scalars())

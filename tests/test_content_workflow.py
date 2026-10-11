@@ -20,7 +20,7 @@ from app.services.content_ai import ContentAI
 from app.api.admin.content_routes import router
 from app.core.admin_security import require_admin
 
-PAYLOAD = dict(title='Warehouse decision', slug='warehouse-decision', content='## A business decision\n'+('Useful business detail. '*60)+' [Source](https://example.com/docs)', excerpt='When a warehouse helps managers.', meta_description='A practical warehouse decision guide.', tags=['analytics'], diagram_alt='', unresolved_claims=[])
+PAYLOAD = dict(title='Warehouse decision', slug='warehouse-decision', content='## A business decision\n'+('Useful business detail. '*60)+' [Source](https://example.com/docs)', excerpt='When a warehouse helps managers.', meta_description='A practical warehouse decision guide.', seo_title='Warehouse guide for managers', category='Data', subcategory='Analytics', keywords=['warehouse decision'], language='en', schema_type='TechArticle', open_graph_title='Do you need a warehouse?', open_graph_description='A decision guide for managers.', tags=['analytics'], diagram_alt='', unresolved_claims=[])
 RESEARCH = dict(ready=True, summary='Evidence collected', claims=[{'claim':'Stores reporting data','source_urls':['https://example.com/docs'],'evidence':'Documentation','qualification':''}], gaps=[], sources=[{'url':'https://example.com/docs','title':'Docs','checked_at':'2026-10-10'}])
 
 class Adapter:
@@ -99,6 +99,9 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         second=await service.save_draft(self.db,t.topic_id,p,1)
         self.assertEqual(first,second);self.assertEqual(len(await q.articles(self.db)),1)
         a=await q.article(self.db,t.article_id);self.assertEqual(a.status,'draft')
+        for key in ['seo_title','category','subcategory','keywords','language','schema_type','open_graph_title','open_graph_description']:
+            self.assertEqual(getattr(a,key),PAYLOAD[key])
+        self.assertTrue((await service.list_topics(self.db))[0]['has_generated'])
         a.status='published';await q.commit(self.db)
         view=(await service.list_topics(self.db))[0]
         self.assertEqual(view['status'],'Published');self.assertIn('/articles/',view['published_url'])

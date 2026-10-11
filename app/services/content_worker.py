@@ -2,10 +2,12 @@
 import asyncio
 import logging
 from uuid import uuid4
+from openai import APIStatusError
 from app.db.session import SessionLocal
 from app.db.query import content_workflow as q
 from app.db.models.content_workflow import ContentRun, ContentVersion, ContentQA, now
 from app.services.content_ai import ContentAI
+from app.services.content_gemini import GeminiContentAI
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +51,20 @@ async def tick():
     if not job: return False
     result, error, ai = None, None, None
     try:
-        ai = ContentAI()
+        ai = GeminiContentAI() if job.inputs.get('provider', 'openai') == 'gemini' else ContentAI()
         # Less than the ten-minute lease; process crashes are recovered by claim().
         result = await asyncio.wait_for(perform(job, ai), timeout=480)
     except Exception as exc:
         logger.warning('Content run %s failed (%s)', job.id, type(exc).__name__)
         error = str(exc) if isinstance(exc, ValueError) else f'{type(exc).__name__}: provider or worker unavailable. Check configuration and retry.'
+        if isinstance(exc, APIStatusError):
+            body = exc.body if isinstance(exc.body, dict) else {}
+            detail = body.get('error', body)
+            detail = detail if isinstance(detail, dict) else {}
+            if detail.get('code') in {'insufficient_quota', 'credit_balance_exhausted'} or detail.get('type') == 'insufficient_quota':
+                error = 'OpenAI API credit or quota is exhausted. Restore API credit/quota for the configured key, then retry this stage.'
+            elif exc.status_code == 429:
+                error = 'OpenAI rate limit reached. Wait briefly, then retry this stage.'
     finally:
         if ai: await ai.close()
     async with SessionLocal() as db:

@@ -1,11 +1,11 @@
 # Inventory article workflow
 
-The admin workflow is Topics → brief → Begin research → Generate article → automated QA → Save to Drafts → existing manual publishing. OpenAI is used for research/writing. Gemini and YouTube are not prerequisites. Existing transcript tools remain at `/draft/legacy`.
+The admin workflow is Topics → brief → Begin research → Generate article → automated QA → Save to Drafts → existing manual publishing. OpenAI is used for research/writing. Gemini and YouTube are not prerequisites. The retired transcript UI and its API endpoints have been removed. Drafts uses the inventory workspace. Historical database fields are retained.
 
 ## Deployment
 
 1. Back up the database. Apply the additive `c01_content_workflow` Alembic migration through your existing deployment process (`alembic upgrade head`). For installations using the SQL migration runner, the equivalent SQL is in `docs/content-workflow-schema.sql`; register/apply it using that installation's migration history. Do not apply both methods to the same database. No migration runs at API startup.
-2. Retain `OPENAI_API_KEY` on the backend only. Set `CONTENT_RESEARCH_MODEL` and `CONTENT_WRITING_MODEL` to supported Responses API models available to the account; unset values reuse existing `OPENAI_DRAFT_MODEL`. Verify web-search support for the research model. Current SDK dependency includes Responses and structured parsing; integration uses `web_search` and Pydantic structured outputs.
+2. Retain `OPEN_AI_KEY` (or `OPENAI_API_KEY`) on the backend only. Both names are accepted; within the same settings source, `OPENAI_API_KEY` takes precedence if both are set. Restart the API and content worker after changing environment settings. Set `CONTENT_RESEARCH_MODEL` and `CONTENT_WRITING_MODEL` to supported Responses API models available to the account; unset values reuse existing `OPENAI_DRAFT_MODEL`. Verify web-search support for the research model. Current SDK dependency includes Responses and structured parsing; integration uses `web_search` and Pydantic structured outputs.
 3. Optional settings: `CONTENT_WORKFLOW_ENABLED=true`, `CONTENT_HOST=explainit.tech`, `CONTENT_MAX_SEARCH_CALLS=6`, `CONTENT_MAX_OUTPUT_TOKENS=10000`. Limits bound calls/output, not a guaranteed currency budget. Usage is recorded per run; failed requests can still incur provider charges.
 4. Start API as usual. Start a separately supervised process from the backend directory: `python -m app.services.content_worker`. Do not put it inside every API worker. Database leases allow recovery after crashes; one active job per topic is enforced by an index. A process supervisor should restart failed workers.
 5. Preview bundled seed import with `python -m app.services.content_seed`; run with `--apply` to import topics and the existing EXPLAINIT-001 draft. Existing IDs/work are preserved. This command does not publish or call OpenAI. Check the imported draft's dated claims before publishing.
@@ -29,4 +29,18 @@ Run backend unit tests with `python -m unittest discover -s tests`. New content 
 
 Run `npm test` and `npx tsc --noEmit` in admin; run `node --test tests/*.test.mjs` and `npx tsc --noEmit` in public. Before rollout, exercise two controlled live topics and review source support, specificity, diagram correctness, editing time, and cost.
 
-Rollback UI to `/draft/legacy` and disable `CONTENT_WORKFLOW_ENABLED` if needed. Keep new tables/data; do not downgrade a migration with editorial work without a reviewed backup/restore plan. Existing articles/public reading do not depend on the new workflow being enabled.
+Disable `CONTENT_WORKFLOW_ENABLED` if needed. Keep new tables/data; do not downgrade a migration with editorial work without a reviewed backup/restore plan. Existing articles/public reading do not depend on the new workflow being enabled.
+
+## Admin page layout and metadata
+
+Topics uses the shared sidebar layout: add/import/edit/archive/delete topics on the left; the selected topic's brief, research, generation and run history on the right. Drafts lists topics with generated versions or saved draft articles and shows the article, metadata, version history and QA. Published topics are excluded from the draft list.
+
+OpenAI generates article text and editorial metadata together in one structured response, including SEO title, category/subcategory, keywords, language, schema type and Open Graph text. Older saved versions remain readable with default values for the new metadata fields. Publication state, host, canonical URL, dates and reading time are application-managed. Images are supplied in the article editor rather than invented by the language model. No Gemini metadata call or new database migration is required.
+
+## Provider selection
+
+Choose OpenAI or Gemini in the topic or draft workspace before starting a stage. Jobs pin the selection; automatic QA inherits the generation provider. Existing jobs default to OpenAI. There is no automatic provider fallback and no migration is needed.
+
+Gemini uses GOOGLE_AI_STUDIO_API_KEY and CONTENT_GEMINI_MODEL (default gemini-2.5-flash). Research uses Google Search grounding, followed by a separate evidence-ledger extraction. Generation returns article and metadata together; QA uses the same editorial checks. Gemini search query counts are provider-controlled; CONTENT_MAX_SEARCH_CALLS is an OpenAI-only limit. Usage and Gemini search queries are retained. Live account access, quotas and generated quality require a pilot.
+
+References: https://ai.google.dev/gemini-api/docs/google-search and https://ai.google.dev/gemini-api/docs/structured-output

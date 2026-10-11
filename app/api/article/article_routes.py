@@ -8,13 +8,10 @@ from app.db.session import get_db
 from app.schemas.article import (
     ArticleBulkDeleteRequest,
     ArticleDeleteResponse,
-    ArticleDraftGenerateRequest,
     ArticleResponse,
     ArticleUpdate,
 )
 from app.services import article_service
-from app.services.ai_exceptions import TemporaryProviderError
-from app.services.yt_video import generate_article_draft_for_video
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -92,25 +89,3 @@ async def update_article_route(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/draft-article/{video_id}", response_model=ArticleResponse)
-async def generate_article_draft_route(
-    video_id: int,
-    payload: ArticleDraftGenerateRequest | None = None,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await generate_article_draft_for_video(
-            db=db,
-            trend_video_id=video_id,
-            provider=payload.provider if payload else "gemini",
-            prompt=payload.prompt if payload else None,
-            additional_context=payload.additional_context if payload else None,
-        )
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except TemporaryProviderError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

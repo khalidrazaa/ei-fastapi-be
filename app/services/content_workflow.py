@@ -32,7 +32,8 @@ def topic_view(item, article=None):
 
 async def list_topics(db):
     articles = {x.id: x for x in await q.articles(db)}
-    return [topic_view(x, articles.get(x.article_id)) for x in await q.topics(db)]
+    generated = await q.generated_topic_ids(db)
+    return [dict(topic_view(x, articles.get(x.article_id)), has_generated=x.topic_id in generated) for x in await q.topics(db)]
 
 async def create(db, payload, actor):
     item = ContentTopic(topic_id=await q.reserve_id(db), **payload.model_dump())
@@ -70,7 +71,7 @@ async def workspace(db, topic_id):
     candidates += [(f'article-{x.id}', x.title, '') for x in await q.articles(db) if x.id != item.article_id]
     return {'topic': topic_view(item, article), 'runs': [row(x) for x in await q.runs(db, topic_id)],
             'versions': [row(x) for x in versions], 'qa': [row(x) for x in await q.reports(db, [v.id for v in versions])],
-            'article_fingerprint': fingerprint(article), 'article_status': article.status if article else None,
+            'article': row(article) if article else None, 'article_fingerprint': fingerprint(article), 'article_status': article.status if article else None,
             'overlaps': overlaps(item.title, item.reader_question, candidates)}
 
 async def article_workspace(db, article_id):
@@ -106,7 +107,7 @@ async def start(db, topic_id, payload, actor):
     if payload.stage in ['qa', 'fix'] and (not version or version.topic_id != topic_id or version.brief_version != item.brief_version):
         raise Conflict('Select a version for the current brief.')
     reports = await q.reports(db, [version.id]) if version else []
-    inputs = {'title': item.title, 'question': item.reader_question, 'brief': item.brief,
+    inputs = {'provider': payload.provider, 'title': item.title, 'question': item.reader_question, 'brief': item.brief,
               'brief_version': item.brief_version, 'research_id': research.id if research else None,
               'research': research.result if research else None, 'version_id': version.id if version else None,
               'payload': version.payload if version else None, 'qa': reports[0].report if reports else None}
@@ -159,8 +160,8 @@ async def save_draft(db, topic_id, payload, actor):
     host = settings.CONTENT_HOST
     if any(x.slug == data['slug'] and (not article or x.id != article.id) for x in await q.articles(db)):
         raise Conflict('Slug already exists. Edit the workspace slug.')
-    fields = {k: data[k] for k in ['title','slug','content','excerpt','meta_description','tags']}
-    fields.update(status='draft', host_site=host, category=item.track, drafted_at=now(),
+    fields = {k: data[k] for k in ['title', 'slug', 'content', 'excerpt', 'meta_description', 'tags', 'keywords', 'seo_title', 'category', 'subcategory', 'language', 'schema_type', 'open_graph_title', 'open_graph_description']}
+    fields.update(status='draft', host_site=host, category=data['category'] or item.track, drafted_at=now(),
                   canonical_url=f'https://{host}/articles/{data["slug"]}', reading_time=max(1, len(data['content'].split()) // 200))
     if article:
         for key, value in fields.items(): setattr(article, key, value)

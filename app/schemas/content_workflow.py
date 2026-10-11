@@ -37,6 +37,7 @@ class BriefEdit(StrictModel):
     brief: Brief
 
 class RunInput(StrictModel):
+    provider: Literal["openai", "gemini"] = "openai"
     stage: Literal['research', 'generate', 'qa', 'fix']
     request_key: str = Field(min_length=10, max_length=100)
     expected_version: int
@@ -51,6 +52,14 @@ class DraftPayload(StrictModel):
     tags: list[str] = Field(max_length=8)
     diagram_alt: str = Field(max_length=1000)
     unresolved_claims: list[str] = Field(max_length=30)
+    seo_title: str = Field(default='', max_length=300)
+    category: str = Field(default='', max_length=120)
+    subcategory: str = Field(default='', max_length=120)
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+    language: str = Field(default='en', max_length=20)
+    schema_type: Literal['Article', 'BlogPosting', 'TechArticle'] = 'Article'
+    open_graph_title: str = Field(default='', max_length=300)
+    open_graph_description: str = Field(default='', max_length=1000)
 
 class VersionInput(StrictModel):
     expected_version: int
