@@ -10,7 +10,10 @@ from app.api.trend_keyword import keyword_routes
 from app.api.videos import video_routes
 from app.api.youtube import youtube_routes
 
+from app.api.admin.content_routes import router as content_router
+
 router = APIRouter()
+router.include_router(content_router, prefix="/admin", tags=["content-workflow"])
 
 router.include_router(auth_routes.router, prefix="/auth", tags=["auth"])
 router.include_router(admin_routes.router, prefix="/admin", tags=["admin"])

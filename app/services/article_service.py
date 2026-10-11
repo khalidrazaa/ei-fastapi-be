@@ -155,7 +155,7 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
         "tags": _normalize_list(payload.get("tags")),
         "keywords": _normalize_list(payload.get("keywords")),
         "host_site": _normalize_host_site(payload.get("host_site")),
-        "status": _normalize_status(payload.get("status")),
+        "status": "draft",  # Only an authenticated admin can publish; ignore model status.
         "language": str(payload.get("language") or "en").strip() or "en",
         "canonical_url": str(payload.get("canonical_url") or source_url).strip() or None,
         "schema_type": str(payload.get("schema_type") or "Article").strip() or "Article",
@@ -405,7 +405,13 @@ async def update_article(
     article_id: int,
     payload: dict[str, Any],
 ) -> Article:
-    article = await get_article(db, article_id)
+    article = await article_query.get_article_for_update(db, article_id)
+    if article is None:
+        raise LookupError('Article not found.')
+    if 'expected_updated_at' in payload:
+        expected = payload.pop('expected_updated_at')
+        if expected != article.updated_at:
+            raise ValueError('Article changed in another session. Reload before saving.')
     updates = _normalize_article_update_payload(payload)
     if not updates:
         return article

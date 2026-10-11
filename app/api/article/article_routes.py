@@ -16,7 +16,7 @@ from app.services import article_service
 from app.services.ai_exceptions import TemporaryProviderError
 from app.services.yt_video import generate_article_draft_for_video
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.post(

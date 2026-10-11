@@ -65,6 +65,7 @@ class ArticleCreate(ArticleBase):
 
 # For updating an existing article
 class ArticleUpdate(BaseModel):
+    expected_updated_at: Optional[datetime] = None
     title: Optional[str] = None
     seo_title: Optional[str] = None
     slug: Optional[str] = None

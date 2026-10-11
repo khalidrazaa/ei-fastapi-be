@@ -14,6 +14,8 @@ from .article_comment import ArticleComment
 from .public_api_key import PublicApiKey
 from .lead import Lead
 
+from .content_workflow import ContentTopic, ContentRun, ContentVersion, ContentQA, ContentAudit, TopicIdentifier
+
 __all__ = [
     "AdminUser",
     "EmailOTP",

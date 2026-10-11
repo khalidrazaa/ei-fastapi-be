@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api.article import article_routes
+from app.core.admin_security import require_admin
 from app.db.models.article import Article
 from app.db.session import get_db
 from app.services import article_service
@@ -63,6 +64,7 @@ class ArticleListTests(unittest.TestCase):
         self.session.commit()
 
         app = FastAPI()
+        app.dependency_overrides[require_admin] = lambda: object()
         app.dependency_overrides[get_db] = lambda: self.db
         app.include_router(article_routes.router, prefix=_BASE_PATH)
         self.client = self.enterContext(TestClient(app))

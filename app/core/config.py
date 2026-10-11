@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     GOOGLE_AI_STUDIO_API_KEY : str
     OPENAI_API_KEY: str | None = None
     OPENAI_DRAFT_MODEL: str = "gpt-5-mini"
+    CONTENT_WORKFLOW_ENABLED: bool = True
+    CONTENT_RESEARCH_MODEL: str = ""
+    CONTENT_WRITING_MODEL: str = ""
+    CONTENT_MAX_OUTPUT_TOKENS: int = 10000
+    CONTENT_MAX_SEARCH_CALLS: int = 6
+    CONTENT_HOST: str = "explainit.tech"
     YOUTUBE_API_KEY : str
     YOUTUBE_BASE_URL: str
     PUBLIC_APP_KEYS: str = ""
