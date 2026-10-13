@@ -44,3 +44,23 @@ Choose OpenAI or Gemini in the topic or draft workspace before starting a stage.
 Gemini uses GOOGLE_AI_STUDIO_API_KEY and CONTENT_GEMINI_MODEL (default gemini-2.5-flash). Research uses Google Search grounding, followed by a separate evidence-ledger extraction. Generation returns article and metadata together; QA uses the same editorial checks. Gemini search query counts are provider-controlled; CONTENT_MAX_SEARCH_CALLS is an OpenAI-only limit. Usage and Gemini search queries are retained. Live account access, quotas and generated quality require a pilot.
 
 References: https://ai.google.dev/gemini-api/docs/google-search and https://ai.google.dev/gemini-api/docs/structured-output
+
+## VPS deployment with Docker Compose
+
+`compose.worker.yaml` runs the worker independently of the existing API/frontend stack. Run these commands from the backend repository on the VPS, with its production `.env` present:
+
+```sh
+docker compose -p explainit-content -f compose.worker.yaml config --quiet
+docker compose -p explainit-content -f compose.worker.yaml up -d --build
+docker compose -p explainit-content -f compose.worker.yaml logs --tail=100 -f content-worker
+```
+
+The worker uses the backend Dockerfile and the same database/API-key settings as FastAPI. It publishes no ports and runs no migrations. Repeat `up -d --build` when deploying changed worker code. Apply required migrations through the usual deployment process first.
+
+The `unless-stopped` policy restarts a failed container and brings it back after Docker restarts unless it was explicitly stopped. Ensure the Docker daemon starts on VPS boot. `docker compose down` removes the service; run `up -d` to create it again. This policy supervises process exits, not model errors, exhausted quota, or database outages caught by the worker. Check logs and queue status.
+
+This standalone setup assumes the configured database is reachable externally (as with the current Supabase configuration). If production uses a database container addressed by a Compose service name, put this worker service in the existing Compose project/network and adjust build/env-file paths instead. The actual VPS Compose file is not in this checkout, so it has not been changed.
+
+Interrupted in-flight jobs may wait for their existing ten-minute lease before retrying. Avoid leaving the development worker connected to the production database once the VPS worker is active.
+
+Docker reference: https://docs.docker.com/reference/compose-file/services/#restart
