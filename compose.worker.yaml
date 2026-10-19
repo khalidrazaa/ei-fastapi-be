@@ -1,0 +1,18 @@
+﻿# Run from the backend repository on the VPS.
+# Uses the same external database configured for the API.
+services:
+  content-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.services.content_worker"]
+    working_dir: /app
+    env_file:
+      - .env
+    restart: unless-stopped
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

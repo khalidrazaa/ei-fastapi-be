@@ -1,419 +1,75 @@
-## Project Overview
-
-This repository is a YouTube Trend Intelligence and Blogging System.
-
-### Core Idea
-- Fetch trending and niche-based YouTube videos using the YouTube API
-- Analyze videos to compute a virality score
-- Identify trends that are viral or likely to go viral
-- Generate content ideas and articles from trends
-- Serve content through multiple frontend applications
-
----
-
-## System Architecture
-
-This is a multi-application system.
-
-### Current Applications
-- `ei-fastapi-be` - Backend API and background processing (FastAPI)
-- `ei-ui-nextjs` - Public content UI (Next.js)
-- `ei-admin-ui-nextjs` - Admin dashboard UI (Next.js)
-
-### Future Applications
-- Additional UI apps may be added over time as the platform grows
-- References to "future-apps" describe planned expansion, not a required existing folder in this repo
-
----
-
-## Core Domain Concepts
-
-### 1. Niche
-- A niche contains multiple keywords
-- Each niche can be scanned independently
-- Scanning fetches relevant YouTube videos
-
-### 2. Trend Detection
-- Videos are evaluated based on:
-  - views
-  - engagement
-  - growth velocity
-- A virality score is calculated
-
-### 3. Idea Generation
-- Trends -> Ideas -> Articles
-- Used for blogging and content creation
-
----
-
-## Backend: `ei-fastapi-be`
-
-### Folder Structure Overview
-
-```text
-ei-fastapi-be/
-├── alembic/						# Alembic config and versions
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions/
-│       ├── *_migration_files.py
-│
-├── migrations/						# SQL/history migrations
-│   ├── generate_sql_from_models.py
-│   ├── migration_script.py
-│   └── history_sql_mig/
-│
-├── app/
-│   ├── main.py						# Entry point
-│   │
-│   ├── api/
-│   │   ├── router.py
-│   │   ├── admin/
-│   │   ├── auth/
-│   │   ├── niche/
-│   │   ├── trend_keyword/
-│   │   └── youtube/
-│   │
-│   ├── clients/
-│   │   └── youtube_client.py		# External API clients
-│   │
-│   ├── core/						# Config and security
-│   │   ├── config.py
-│   │   └── security.py
-│   │
-│   ├── db/
-│   │   ├── base.py
-│   │   ├── session.py
-│   │   ├── schema.sql
-│   │   ├── mongodb.py
-│   │   ├── models/
-│   │   └── query/
-│   │
-│   ├── generated/					# Generated artifacts/helpers
-│   │   └── blogs.json
-│   │
-│   ├── scheduler/					# Background jobs and scheduler startup
-│   │   ├── jobs.py
-│   │   └── scheduler.py
-│   │
-│   ├── schemas/					# Pydantic schemas
-│   │   ├── admin_user.py
-│   │   ├── article.py
-│   │   ├── auth.py
-│   │   ├── email_otp.py
-│   │   ├── keyword.py
-│   │   ├── niche.py
-│   │   ├── trends.py
-│   │   ├── trend_video.py
-│   │   └── youtube.py
-│   │
-│   ├── services/
-│   │   ├── admin_service.py
-│   │   ├── auth_service.py
-│   │   ├── gemini_service.py
-│   │   ├── niche_service.py
-│   │   ├── trend_scrape.py
-│   │   ├── trend_video.py
-│   │   ├── analyzer/
-│   │   │   ├── trend_analyzer.py
-│   │   │   ├── trend_discovery_service.py
-│   │   │   └── idea_generator.py
-│   │   └── scanner/
-│   │       ├── niche_scanner.py
-│   │       └── youtube_scan_service.py
-│   │
-│   └── utils/						# Helper
-│       ├── cookies.py
-│       └── email.py
+# Repository instructions
 
-```
+This workspace is the ExplainIt publishing and YouTube trend-intelligence system. Keep the sibling layout used by `blogging system.code-workspace`:
 
----
+| Repository | Responsibility |
+| --- | --- |
+| `ei-fastapi-be` | FastAPI, persistence, integrations, scanning, content jobs |
+| `ei-admin-ui-nextjs` | Next.js admin: topics, drafts, articles, leads, niches, settings |
+| `ei-ui-nextjs` | Next.js public articles, comments, contact form |
 
-## Backend Architecture Rules
+Additional applications may be added; do not assume a `future-apps` directory exists.
 
-### Layer Responsibilities
+## Architecture and contracts
 
-| Layer | Responsibility |
-|---|---|
-| API | Request/response handling only |
-| Services | Business logic |
-| Query | Database interaction |
-| Models | Database schema |
-| Schemas | Validation |
+Follow `API -> Service -> Query -> Database`: routes handle HTTP/auth, services own business logic, query modules own persistence, models define tables, and schemas validate inputs/outputs. Keep new logic out of routes and reuse existing contracts before adding endpoints or response wrappers.
 
-### Mandatory Flow
+| Location | Purpose |
+| --- | --- |
+| `app/main.py`, `app/api/router.py` | Startup and route registration; actual API prefix is `/v1` |
+| `app/core/` | Settings, JWT/admin authentication, public app-key checks |
+| `app/db/models/`, `app/db/query/`, `app/schemas/` | SQLAlchemy models, database access, Pydantic validation |
+| `app/services/content_*.py` | Inventory workflow, providers, worker, policy, seed import |
+| `app/clients/`, `app/services/scanner/`, `app/services/analyzer/` | YouTube API, niche/popular scans, trend scores and ideas |
+| `app/scheduler/` | APScheduler scan/discovery jobs registered at API startup |
+| `alembic/`, `migrations/` | Separate Alembic and SQL-history migration mechanisms |
+| Frontend `src/app/`, `src/components/`, `src/lib/`, `src/types/` | Routes, reusable UI, API/services/utilities, types |
 
-`API -> Service -> Query -> Database`
+Use `/v1/admin/...`, `/v1/public/articles`, and `/v1/public/contact`; `/v1/api` is not registered by this app. Read route registration before changing paths. Preserve existing admin cookie/Bearer authentication and Origin checks on protected routes. Public requests require `host_site` and `X-Public-App-Key`; public article queries return only published content for that host.
 
-### Strict Rules
+## Functional boundaries
 
-- Never put business logic inside API routes
-- Never access the database directly from routes
-- Never bypass the service layer without a strong existing pattern
-- Always follow the layered architecture used in the codebase
+- Niches contain keywords; scanning fetches videos, then analysis scores virality/growth/engagement, discovers trends and creates ideas. PostgreSQL is the main relational store; MongoDB remains an integration. Inspect the existing store before adding persistence.
+- Inventory flow: brief -> manual research -> manual generation -> automatic QA -> manual Save to Drafts -> manual publish in the article editor. QA is advisory; there is no separate approval gate. OpenAI/Gemini selection is pinned per job; automatic QA inherits generation's provider. Inventory research does not require YouTube. Shared sources/instructions are managed through protected `/v1/admin/content-research-settings` and stored in `content_research_settings`; enqueue research with a settings snapshot, keep per-brief URLs optional, and preserve historical snapshots. Defaults select relevant sources rather than requiring every preferred domain.
+- Accept all schema-valid provider claims, including empty or nonmatching citation lists. Do not reject research on per-claim URL membership. Preserve claims and the provider-returned source catalog separately; research readiness and advisory QA still apply.
+- Preserve immutable workspace versions, current-brief checks, idempotency, article fingerprints, job leases/fencing and cancellation. Workspace operations must not overwrite published articles. Keep private briefs/research/QA out of public article bodies; topic IDs are never reused. Archive topics with history instead of deleting them.
+- Contact submissions are committed as leads before an inline email attempt. Email failure does not undo a saved enquiry. There is no email worker, outbox or automatic email retry. Preserve validation, database-backed submission limits, admin access and private/no-store responses. Details: [lead management](docs/lead-management.md).
 
----
+## Development
 
-## API Rules
+Use Python 3.12+ and Node 24 (matching the devcontainer and frontend images). From the backend, `uv sync --locked` installs dependencies. Configure all required fields declared in `app/core/config.py` in backend `.env`, including existing integration settings; selecting one AI provider does not remove other required settings. Never commit or print credentials.
 
-- Base path: `/v1/api`
-- Follow REST principles
-- Reuse existing endpoints when possible
-- Do not create duplicate APIs
+Run from each application's own directory, using a development database:
 
-### Standard Response Format
+| Process | Command |
+| --- | --- |
+| FastAPI | `uv run uvicorn app.main:app --reload` |
+| Content worker, separate terminal | `uv run python -m app.services.content_worker` |
+| Public frontend | `npm ci`, then `npm run dev -- --port 3000` |
+| Admin frontend | `npm ci`, then `npm run dev -- --port 3001` |
 
-Use the existing endpoint response patterns in the codebase. Prefer consistency with current routes over inventing a new wrapper format.
+API startup does not start the content worker. Keep both backend terminals open; restart the worker after its code or environment changes. APScheduler already starts per API process: consider duplicate scan scheduling when changing Gunicorn process counts. Do not run a development worker against production queues.
 
----
+Admin requests use `NEXT_PUBLIC_API_BASE_URL` (including `/v1`) with credentials; configure matching backend CORS origins. The public app keeps `API_URL` and `PUBLIC_APP_KEY` server-side. Set browser-visible variables before building, verify Docker build arguments match source usage, and provide loading/error states. Keep shared frontend logic reusable. See each frontend README and the [devcontainer guide](.devcontainer/README.md).
 
-## YouTube Integration
+## Database changes and validation
 
-### Key Components
+1. Register relational models in `app/db/models/__init__.py`, imported by `app/db/base.py`.
+2. Use a reviewed migration. Alembic uses `ALEMBIC_DATABASE_URL`; the SQL generator inspects the configured database and writes additive SQL. The SQL runner checks `DB_NAME`; its bare invocation applies every untracked history file, while `--file` selects one reviewed file.
+3. Back up before deployment, inspect generated SQL, and use the installation's migration history. Alembic and `schema_migrations` are independent; do not apply equivalent schema changes twice or run migrations at API startup. Commands: [Instruction.md](Instruction.md).
+4. Run checks appropriate to the change:
 
-- `app/clients/youtube_client.py`
-  - Handles external YouTube API calls
-- `app/services/scanner/youtube_scan_service.py`
-  - Orchestrates scanning flow
-- `app/services/scanner/niche_scanner.py`
-  - Runs scans for specific niches
-- `app/services/trend_scrape.py`
-  - Fetches trending video data
+   | App | Checks from its directory |
+   | --- | --- |
+   | Backend | `uv run python -m unittest discover -s tests` |
+   | Admin | `npm test`, `npx tsc --noEmit`; `npm run build` for build-related changes |
+   | Public | `node --test tests/*.test.mjs`, `npx tsc --noEmit`; `npm run build` for build-related changes |
 
----
+Use mocked/isolated tests for routine work. Optional `CONTENT_TEST_DATABASE_URL` and `LEAD_TEST_DATABASE_URL` suites require disposable local databases ending in `_test`; never target production. Check current package scripts before documenting lint commands.
 
-## Analyzer System
-
-Located in: `app/services/analyzer/`
-
-### Responsibilities
-- Trend scoring
-- Trend detection
-- Idea generation
-
-### Key Files
-- `trend_analyzer.py`
-- `trend_discovery_service.py`
-- `idea_generator.py`
-
----
-
-## Scheduler
-
-Located in: `app/scheduler/`
-
-Used for:
-- periodic scanning
-- automated trend updates
-- startup scheduler registration
-
----
-
-## Database
-
-The backend currently uses more than one data store/integration:
-
-- PostgreSQL with SQLAlchemy
-- Alembic migrations
-- MongoDB integration for part of the system
-
-### Rules
-- Always use migrations for relational schema changes
-- Do not make undocumented manual database changes
-- Check the existing SQL and MongoDB access patterns before adding new persistence logic
-
----
-
-## Frontend: `ei-ui-nextjs`
-
-### Structure
-
-```text
-ei-ui-nextjs/
-`-- src/
-    |-- app/          # Next.js App Router
-    |-- components/   # UI components
-    `-- types/        # TypeScript types
-```
-
-### Responsibilities
-
-- Render public articles and content
-- Fetch data from backend APIs
-- Manage routing and UI state
-
-### Frontend Rules
-
-- Do not hardcode API URLs
-- Use environment variables where needed
-- Handle loading and error states
-- Keep components reusable
-
----
-
-## Frontend: `ei-admin-ui-nextjs`
-
-## Purpose
-
-Internal tool for managing system data and operations
-
-### Structure
-
-```text
-ei-admin-ui-nextjs/
-`---src
-    |   proxy.ts
-    |   
-    +---app								# Next.js App Router
-    |   |   favicon.ico
-    |   |   globals.css
-    |   |   layout.tsx
-    |   |   page.tsx
-    |   |   tailwindcss
-    |   |   
-    |   +---(auth)
-    |   |   \---login
-    |   |           page.tsx
-    |   |           
-    |   \---(protected)
-    |       |   layout.tsx
-    |       |   
-    |       +---dashboard
-    |       |       page.tsx
-    |       |       
-    |       +---niches
-    |       |       page.tsx
-    |       |       
-    |       \---trends
-    |               page.tsx
-    |               
-    +---components						# UI components
-    |   \---ui
-    |           Button.tsx
-    |           ConfirmModal.tsx
-    |           Toggle.tsx
-    |           VideoCard.tsx
-    |           
-    +---lib								# Shared client helpers/utilities
-    |   |   api.ts
-    |   |   
-    |   +---services
-    |   |       auth.ts
-    |   |       keyword.ts
-    |   |       niche.ts
-    |   |       scaned-trends.ts
-    |   |       
-    |   \---utils
-    |           formatters.ts
-    |           
-    \---types							# TypeScript types
-            css.d.ts
-            types.ts
-```
+## Deployment and working rules
 
-### Responsibilities
-
-- Provide the admin dashboard experience
-- Manage admin-side content and trend workflows
-- Integrate with backend admin APIs
-
-### Frontend Rules
-
-- Do not hardcode API URLs
-- Use environment variables where needed
-- Keep shared admin logic in reusable utilities/components
-- Match existing app patterns before introducing new abstractions
-
----
-
-## Global Rules
-
-### Never Modify
-
-- `.next`
-- `node_modules`
-- generated build outputs
-
-### Never Do
-
-- Duplicate logic without need
-- Break API contracts
-- Introduce unused code
-- Mix responsibilities across layers
-
----
-
-## Debugging Strategy
-
-When debugging issues:
-
-1. Identify the layer:
-   - frontend
-   - backend
-   - API contract
-   - data/storage integration
-
-2. Trace the flow:
-
-`UI -> API -> Service -> Query/Client -> DB or external API`
-
-3. Validate:
-- request payload
-- response shape
-- schema mismatch
-- environment/config issues
-- database or scheduler side effects
-
-4. Fix the root cause, not just the symptom
-
----
-
-## Common Tasks for Codex
-
-- Fix API integration issues
-- Add features end-to-end
-- Debug scanning failures
-- Improve trend scoring
-- Refactor services safely
-- Add endpoints without duplicating behavior
-- Keep docs and code structure aligned
-
----
-
-## Development Philosophy
-
-- Prefer small, safe changes
-- Reuse existing code patterns
-- Maintain clean separation of concerns
-- Read existing code before modifying
-- Verify structure from the repo instead of assuming
-
----
-
-## Run Commands
-
-### Backend
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### Frontend Apps
-
-```bash
-npm run dev
-```
-
-Run frontend commands from the specific app directory you want to start.
-
----
-
-## Codex Working Guidelines
-
-- Always analyze related files before making changes
-- Do not assume structure; verify it
-- Prefer modifying existing files over creating new ones
-- Explain changes before applying them
-- Avoid large rewrites unless necessary
-- Keep this file aligned with the real repo structure as the system evolves
+- `compose.yaml` builds and starts `api` plus `content-worker`; `compose.worker.yaml` supports the standalone worker. The Dockerfile alone starts Gunicorn. Keep the content worker separately supervised rather than spawning it inside API processes.
+- The existing VPS stack uses `fastapi-app`; add a worker with the same backend image, environment and networks. No worker port or Nginx route is needed. Configure restart policy and Docker startup at boot. CI builds/pushes images; it does not deploy services or apply migrations. Steps: [content workflow](docs/content-workflow.md).
+- Trace changes through UI -> API -> service -> query/client -> storage; check payloads, response shapes, settings and side effects. Fix the underlying cause.
+- Read related code before editing, explain intended changes, prefer small existing-pattern fixes, and preserve unrelated work. Do not duplicate logic, break contracts or add unused code. Never hand-edit `.next`, `node_modules`, virtual environments or generated build outputs. Update affected documentation when behavior changes.

@@ -1,0 +1,29 @@
+# Start FastAPI and its content worker together: docker compose up -d --build
+name: explainit-backend
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      PORT: "${PORT:-8000}"
+    ports:
+      - "${API_PORT:-8000}:${PORT:-8000}"
+    depends_on:
+      - content-worker
+    restart: unless-stopped
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  content-worker:
+    extends:
+      file: compose.worker.yaml
+      service: content-worker

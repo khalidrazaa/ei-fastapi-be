@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from slugify import slugify
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.article import Article
@@ -155,7 +156,7 @@ def _coerce_article_payload(payload: dict[str, Any], video: TrendVideo) -> dict[
         "tags": _normalize_list(payload.get("tags")),
         "keywords": _normalize_list(payload.get("keywords")),
         "host_site": _normalize_host_site(payload.get("host_site")),
-        "status": _normalize_status(payload.get("status")),
+        "status": "draft",  # Only an authenticated admin can publish; ignore model status.
         "language": str(payload.get("language") or "en").strip() or "en",
         "canonical_url": str(payload.get("canonical_url") or source_url).strip() or None,
         "schema_type": str(payload.get("schema_type") or "Article").strip() or "Article",
@@ -400,12 +401,53 @@ def _normalize_article_update_payload(payload: dict[str, Any]) -> dict[str, Any]
     return updates
 
 
+async def create_draft(db: AsyncSession, payload: dict[str, Any]) -> Article:
+    if _normalize_status(payload.get("status"), strict=True) != "draft":
+        raise ValueError("New articles must be saved as drafts.")
+
+    values = _normalize_article_update_payload(payload)
+    values["title"] = _normalize_required_string(payload.get("title"), "Title")
+    values["slug"] = _normalize_slug(payload.get("slug"))
+    values["content"] = _normalize_optional_string(payload.get("content"))
+    values["status"] = "draft"
+    values["host_site"] = _normalize_host_site(payload.get("host_site"))
+    values["tags"] = _normalize_list(payload.get("tags"))
+    values["keywords"] = _normalize_list(payload.get("keywords"))
+    values["language"] = str(payload.get("language") or "en").strip() or "en"
+    values["schema_type"] = _normalize_optional_string(payload.get("schema_type")) or "Article"
+    values["is_featured"] = _normalize_bool(payload.get("is_featured", False))
+    values["drafted_at"] = datetime.now(timezone.utc)
+    values["published_at"] = None
+    if values.get("reading_time") is None:
+        values["reading_time"] = (
+            _estimate_reading_time(values["content"]) if values["content"] else None
+        )
+
+    if await article_query.get_article_by_slug(db, values["slug"]):
+        raise ValueError("Slug is already in use.")
+
+    try:
+        return await article_query.create_article(db, **values)
+    except IntegrityError:
+        await db.rollback()
+        # A concurrent save can claim the slug after the availability check.
+        if await article_query.get_article_by_slug(db, values["slug"]):
+            raise ValueError("Slug is already in use.") from None
+        raise
+
+
 async def update_article(
     db: AsyncSession,
     article_id: int,
     payload: dict[str, Any],
 ) -> Article:
-    article = await get_article(db, article_id)
+    article = await article_query.get_article_for_update(db, article_id)
+    if article is None:
+        raise LookupError('Article not found.')
+    if 'expected_updated_at' in payload:
+        expected = payload.pop('expected_updated_at')
+        if expected != article.updated_at:
+            raise ValueError('Article changed in another session. Reload before saving.')
     updates = _normalize_article_update_payload(payload)
     if not updates:
         return article

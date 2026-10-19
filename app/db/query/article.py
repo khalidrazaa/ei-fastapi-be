@@ -9,6 +9,10 @@ async def get_article_by_id(db: AsyncSession, article_id: int) -> Article | None
     result = await db.execute(select(Article).where(Article.id == article_id))
     return result.scalar_one_or_none()
 
+async def get_article_for_update(db: AsyncSession, article_id: int) -> Article | None:
+    result = await db.execute(select(Article).where(Article.id == article_id).with_for_update())
+    return result.scalar_one_or_none()
+
 
 async def get_article_ids_for_update(
     db: AsyncSession, article_ids: list[int]

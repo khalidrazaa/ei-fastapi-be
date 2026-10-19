@@ -1,6 +1,7 @@
 # app/core/config.py
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field
 from typing import List
 
 class Settings(BaseSettings):
@@ -34,8 +35,17 @@ class Settings(BaseSettings):
     BREVO_URL : str
     CONTACT_EMAIL_TO: str = "core@explainit.tech"
     GOOGLE_AI_STUDIO_API_KEY : str
-    OPENAI_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENAI_API_KEY", "OPEN_AI_KEY")
+    )
     OPENAI_DRAFT_MODEL: str = "gpt-5-mini"
+    CONTENT_WORKFLOW_ENABLED: bool = True
+    CONTENT_GEMINI_MODEL: str = "gemini-2.5-flash"
+    CONTENT_RESEARCH_MODEL: str = ""
+    CONTENT_WRITING_MODEL: str = ""
+    CONTENT_MAX_OUTPUT_TOKENS: int = 10000
+    CONTENT_MAX_SEARCH_CALLS: int = 6
+    CONTENT_HOST: str = "explainit.tech"
     YOUTUBE_API_KEY : str
     YOUTUBE_BASE_URL: str
     PUBLIC_APP_KEYS: str = ""
