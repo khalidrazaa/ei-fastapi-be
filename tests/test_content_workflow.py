@@ -160,10 +160,13 @@ class PolicyTests(unittest.TestCase):
                 self.assertEqual(getattr(client,method)(path).status_code,401)
 
 class ProviderTests(unittest.IsolatedAsyncioTestCase):
-    async def test_research_rejects_invented_evidence_url(self):
+    async def test_research_retains_unmatched_evidence_url(self):
         ai=object.__new__(ContentAI);ai.usage=[]
         output=SimpleNamespace(model_dump=lambda:{'content':[{'annotations':[{'url':'https://example.com/docs','title':'Docs'}]}]})
         response=SimpleNamespace(output=[output],output_text='Source findings',id='response',model='fixture',usage=None)
         ai.client=SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
-        ai.structured=AsyncMock(return_value={**RESEARCH,'claims':[{'source_urls':['https://fake.example.com']}]})
-        with self.assertRaises(ValueError): await ai.research({'title':'Title','question':'Question','brief':{}})
+        claim={'claim':'Returned finding','source_urls':['https://fake.example.com'],'evidence':'Returned evidence','qualification':'Review source'}
+        ai.structured=AsyncMock(return_value={**RESEARCH,'claims':[claim]})
+        result=await ai.research({'title':'Title','question':'Question','brief':{}})
+        self.assertEqual(result['claims'],[claim])
+        self.assertEqual([source['url'] for source in result['sources']],['https://example.com/docs'])

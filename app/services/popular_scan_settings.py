@@ -1,11 +1,78 @@
+import re
+from typing import Literal, TypedDict
+
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.popular_scan_setting import PopularScanSetting
 from app.db.query import popular_scan_setting as popular_scan_setting_query
 
 
 DEFAULT_REGION_CODES = ["US"]
 DEFAULT_MAX_RESULTS = 10
 MAX_ALLOWED_RESULTS = 50
+_SCAN_CONTROL_COLUMNS = {
+    "youtube_scan_enabled", "popular_scan_enabled", "niche_scan_enabled"
+}
+_MISSING_SCAN_CONTROL_COLUMN = re.compile(
+    r'\bcolumn\s+(?:"?popular_scan_settings"?\.)?'
+    r'"?(youtube_scan_enabled|popular_scan_enabled|niche_scan_enabled)"?'
+    r'(?:\s+of\s+relation\s+"?popular_scan_settings"?)?\s+does not exist\b',
+    re.IGNORECASE,
+)
+
+
+class PopularScanSettings(TypedDict):
+    region_codes: list[str]
+    available_regions: list[dict[str, str]]
+    max_results: int
+    youtube_scan_enabled: bool
+    popular_scan_enabled: bool
+    niche_scan_enabled: bool
+
+
+class YouTubeScanDisabledError(Exception):
+    pass
+
+
+class YouTubeScanMigrationRequiredError(Exception):
+    def __init__(self) -> None:
+        super().__init__(
+            "Apply the YouTube scan controls database migration "
+            "(011_youtube_scan_controls.sql or c03_youtube_scan_controls), "
+            "then reload."
+        )
+
+
+def _is_missing_scan_controls(error: ProgrammingError) -> bool:
+    original = error.orig
+    sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    if sqlstate != "42703":
+        return False
+
+    diagnostic = getattr(original, "diag", None)
+    table_name = getattr(diagnostic, "table_name", None)
+    if (
+        getattr(diagnostic, "column_name", None) in _SCAN_CONTROL_COLUMNS
+        and table_name in (None, "", "popular_scan_settings")
+    ):
+        return True
+
+    # Inspect the driver's diagnosis only. SQLAlchemy's full error also contains
+    # the SELECT statement, which always mentions these columns even when a
+    # different column is missing.
+    diagnosis = str(original).partition("\n")[0]
+    return _MISSING_SCAN_CONTROL_COLUMN.search(diagnosis) is not None
+
+
+async def _get_popular_scan_setting(db: AsyncSession) -> PopularScanSetting | None:
+    try:
+        return await popular_scan_setting_query.get_popular_scan_setting(db)
+    except ProgrammingError as error:
+        if not _is_missing_scan_controls(error):
+            raise
+        await db.rollback()
+        raise YouTubeScanMigrationRequiredError() from error
 
 
 def _default_available_regions() -> list[dict[str, str]]:
@@ -50,8 +117,8 @@ def normalize_max_results(max_results: int | None) -> int:
 
 async def get_or_create_popular_scan_settings(
     db: AsyncSession,
-) -> dict[str, list[str] | int | list[dict[str, str]]]:
-    setting = await popular_scan_setting_query.get_popular_scan_setting(db)
+) -> PopularScanSettings:
+    setting = await _get_popular_scan_setting(db)
     if setting is None:
         setting = await popular_scan_setting_query.create_popular_scan_setting(
             db,
@@ -86,6 +153,9 @@ async def get_or_create_popular_scan_settings(
         "region_codes": list(setting.region_codes or region_codes),
         "available_regions": list(setting.available_regions or available_regions),
         "max_results": setting.max_results,
+        "youtube_scan_enabled": setting.youtube_scan_enabled,
+        "popular_scan_enabled": setting.popular_scan_enabled,
+        "niche_scan_enabled": setting.niche_scan_enabled,
     }
 
 
@@ -94,13 +164,16 @@ async def save_popular_scan_settings(
     *,
     region_codes: list[str],
     max_results: int,
-) -> dict[str, list[str] | int | list[dict[str, str]]]:
+    youtube_scan_enabled: bool | None = None,
+    popular_scan_enabled: bool | None = None,
+    niche_scan_enabled: bool | None = None,
+) -> PopularScanSettings:
     normalized_regions = normalize_region_codes(region_codes)
     if not normalized_regions:
         raise ValueError("Select at least one region.")
 
     normalized_max_results = normalize_max_results(max_results)
-    setting = await popular_scan_setting_query.get_popular_scan_setting(db)
+    setting = await _get_popular_scan_setting(db)
     current_available_regions = normalize_available_regions(
         list(setting.available_regions or []) if setting else None
     )
@@ -116,6 +189,15 @@ async def save_popular_scan_settings(
             region_codes=normalized_regions,
             available_regions=current_available_regions,
             max_results=normalized_max_results,
+            youtube_scan_enabled=(
+                True if youtube_scan_enabled is None else youtube_scan_enabled
+            ),
+            popular_scan_enabled=(
+                True if popular_scan_enabled is None else popular_scan_enabled
+            ),
+            niche_scan_enabled=(
+                True if niche_scan_enabled is None else niche_scan_enabled
+            ),
         )
     else:
         setting = await popular_scan_setting_query.update_popular_scan_setting(
@@ -124,12 +206,18 @@ async def save_popular_scan_settings(
             region_codes=normalized_regions,
             available_regions=current_available_regions,
             max_results=normalized_max_results,
+            youtube_scan_enabled=youtube_scan_enabled,
+            popular_scan_enabled=popular_scan_enabled,
+            niche_scan_enabled=niche_scan_enabled,
         )
 
     return {
         "region_codes": list(setting.region_codes or normalized_regions),
         "available_regions": list(setting.available_regions or current_available_regions),
         "max_results": setting.max_results,
+        "youtube_scan_enabled": setting.youtube_scan_enabled,
+        "popular_scan_enabled": setting.popular_scan_enabled,
+        "niche_scan_enabled": setting.niche_scan_enabled,
     }
 
 
@@ -139,7 +227,7 @@ async def save_popular_scan_regions(
     available_regions: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     normalized_regions = normalize_available_regions(available_regions)
-    setting = await popular_scan_setting_query.get_popular_scan_setting(db)
+    setting = await _get_popular_scan_setting(db)
 
     # Never overwrite stored regions with an empty payload from an upstream failure.
     if not normalized_regions:
@@ -189,3 +277,22 @@ async def save_popular_scan_regions(
         )
 
     return list(setting.available_regions or [])
+
+
+async def ensure_youtube_scan_enabled(
+    db: AsyncSession,
+    scan_type: Literal["popular", "niche"],
+) -> None:
+    settings = await get_or_create_popular_scan_settings(db)
+    if not settings["youtube_scan_enabled"]:
+        raise YouTubeScanDisabledError(
+            "All YouTube video scanning is disabled in admin settings."
+        )
+    if scan_type == "popular" and not settings["popular_scan_enabled"]:
+        raise YouTubeScanDisabledError(
+            "YouTube popular scanning is disabled in admin settings."
+        )
+    if scan_type == "niche" and not settings["niche_scan_enabled"]:
+        raise YouTubeScanDisabledError(
+            "YouTube niche scanning is disabled in admin settings."
+        )

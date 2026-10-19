@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clients.youtube_client import YouTubeClient
 from app.db.query.niche import get_keyword_by_id, get_keywords_by_niche, get_niche_by_id
 from app.db.query.yt_video import create_or_update
+from app.services.popular_scan_settings import (
+    YouTubeScanDisabledError,
+    YouTubeScanMigrationRequiredError,
+    ensure_youtube_scan_enabled,
+)
 
 
 class YouTubeScanService:
@@ -27,6 +32,7 @@ class YouTubeScanService:
         self.youtube = youtube_client
 
     async def scan_youtube_niche(self, niche_id: int) -> int:
+        await ensure_youtube_scan_enabled(self.db, "niche")
         keywords = await get_keywords_by_niche(
             db=self.db,
             niche_id=niche_id,
@@ -40,6 +46,8 @@ class YouTubeScanService:
         for keyword in keywords:
             try:
                 total_videos_saved += await self.scan_keyword(keyword.id)
+            except (YouTubeScanDisabledError, YouTubeScanMigrationRequiredError):
+                raise
             except Exception as exc:
                 print(f"Keyword failed {keyword.id}: {exc}")
 
@@ -51,6 +59,7 @@ class YouTubeScanService:
         with richer trend analytics so early winners are not discarded.
         """
 
+        await ensure_youtube_scan_enabled(self.db, "niche")
         keyword = await get_keyword_by_id(self.db, keyword_id)
         if not keyword:
             return 0
@@ -78,6 +87,7 @@ class YouTubeScanService:
         if not video_ids:
             return 0
 
+        await ensure_youtube_scan_enabled(self.db, "niche")
         video_details, category_data = await asyncio.gather(
             self.youtube.get_video_details(video_ids),
             self.youtube.get_video_categories(region_code),
@@ -89,6 +99,7 @@ class YouTubeScanService:
 
         category_map = self._map_video_categories(category_data)
         channel_ids = list({item["snippet"]["channelId"] for item in items})
+        await ensure_youtube_scan_enabled(self.db, "niche")
         channel_data = await self.youtube.get_channel_details(channel_ids)
         channel_map = self._map_channels_by_id(channel_data)
 
@@ -403,6 +414,7 @@ class YouTubeScanService:
         Returns number of processed videos.
         """
 
+        await ensure_youtube_scan_enabled(self.db, "popular")
         category_data, trending_data = await asyncio.gather(
             self.youtube.get_video_categories(region_code),
             self.youtube.get_trending_videos(
@@ -415,6 +427,7 @@ class YouTubeScanService:
         if not video_ids:
             return 0
 
+        await ensure_youtube_scan_enabled(self.db, "popular")
         video_details = await self.youtube.get_video_details(video_ids)
         items = video_details.get("items", [])
         if not items:
@@ -422,6 +435,7 @@ class YouTubeScanService:
 
         category_map = self._map_video_categories(category_data)
         channel_ids = list({item["snippet"]["channelId"] for item in items})
+        await ensure_youtube_scan_enabled(self.db, "popular")
         channel_data = await self.youtube.get_channel_details(channel_ids)
         channel_map = self._map_channels_by_id(channel_data)
 

@@ -31,10 +31,15 @@ class PopularScanSettingsBase(BaseModel):
 
 class PopularScanSettingsOut(PopularScanSettingsBase):
     available_regions: List[YouTubeRegionOut] = Field(default_factory=list)
+    youtube_scan_enabled: bool
+    popular_scan_enabled: bool
+    niche_scan_enabled: bool
 
 
 class PopularScanSettingsUpdate(PopularScanSettingsBase):
-    pass
+    youtube_scan_enabled: bool | None = None
+    popular_scan_enabled: bool | None = None
+    niche_scan_enabled: bool | None = None
 
 
 class PopularScanRunResponse(BaseModel):

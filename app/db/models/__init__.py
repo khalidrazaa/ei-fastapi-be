@@ -14,7 +14,7 @@ from .article_comment import ArticleComment
 from .public_api_key import PublicApiKey
 from .lead import Lead
 
-from .content_workflow import ContentTopic, ContentRun, ContentVersion, ContentQA, ContentAudit, TopicIdentifier
+from .content_workflow import ContentTopic, ContentRun, ContentVersion, ContentQA, ContentAudit, TopicIdentifier, ContentResearchSettings
 
 __all__ = [
     "AdminUser",
@@ -34,4 +34,5 @@ __all__ = [
     "ArticleComment",
     "PublicApiKey",
     "Lead",
+    "ContentResearchSettings",
 ]  #  include all models

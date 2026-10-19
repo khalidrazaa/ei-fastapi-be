@@ -20,9 +20,27 @@ class GeminiWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('google_search',ai.client.aio.models.generate_content.call_args.kwargs['config']['tools'][0])
     async def test_rejects_ungrounded_research(self):
         with self.assertRaises(ValueError): await self.ai(False).research({'title':'Warehouse','question':'Need one?','brief':{}})
-    async def test_rejects_invented_source(self):
-        ai=self.ai();ai.structured.return_value['claims'][0]['source_urls']=['https://invented.example/docs']
-        with self.assertRaises(ValueError): await ai.research({'title':'Warehouse','question':'Need one?','brief':{}})
+    async def test_preserves_all_claims_and_original_source_catalog(self):
+        ai = self.ai()
+        original = ai.structured.return_value['claims'][0]
+        claims = [
+            {**original, 'claim': 'No citation', 'source_urls': []},
+            {**original, 'claim': 'Another source',
+             'source_urls': ['https://invented.example/docs']},
+            {**original, 'claim': 'Mixed sources', 'source_urls': [
+                'https://example.com/docs', 'https://other.example/source',
+            ]},
+        ]
+        ai.structured.return_value['claims'] = claims
+        result = await ai.research({
+            'title': 'Warehouse', 'question': 'Need one?', 'brief': {},
+        })
+        self.assertTrue(result['ready'])
+        self.assertEqual(result['claims'], claims)
+        self.assertEqual(
+            [source['url'] for source in result['sources']],
+            ['https://example.com/docs'],
+        )
     def test_provider_validation(self):
         args=dict(stage='research',request_key='provider-test',expected_version=1)
         self.assertEqual(RunInput(**args).provider,'openai')

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.youtube_client import YouTubeClient
+from app.core.admin_security import require_admin
 from app.core.config import settings
 from app.db.session import get_db
 from app.scheduler.jobs import scan_popular_videos
@@ -13,6 +14,8 @@ from app.schemas.youtube import (
     YouTubeScanResponse,
 )
 from app.services.popular_scan_settings import (
+    YouTubeScanDisabledError,
+    YouTubeScanMigrationRequiredError,
     get_or_create_popular_scan_settings,
     normalize_available_regions,
     save_popular_scan_regions,
@@ -20,7 +23,7 @@ from app.services.popular_scan_settings import (
 )
 from app.services.scanner.youtube_scan_service import YouTubeScanService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 # YT-scanning setting routes---------------------------------------------------
@@ -47,6 +50,8 @@ async def get_popular_regions_route(
             if isinstance(settings_payload, dict)
             else None
         )
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -60,6 +65,8 @@ async def refresh_popular_regions_route(
         payload = await youtube_client.get_i18n_regions()
         regions = _map_youtube_regions(payload)
         return await save_popular_scan_regions(db, available_regions=regions)
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -70,6 +77,8 @@ async def get_popular_scan_settings_route(
 ):
     try:
         return await get_or_create_popular_scan_settings(db)
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -84,7 +93,12 @@ async def update_popular_scan_settings_route(
             db,
             region_codes=payload.region_codes,
             max_results=payload.max_results,
+            youtube_scan_enabled=payload.youtube_scan_enabled,
+            popular_scan_enabled=payload.popular_scan_enabled,
+            niche_scan_enabled=payload.niche_scan_enabled,
         )
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -114,6 +128,10 @@ async def scan_youtube_for_niche(
             "niche_id": niche_id,
             "videos_saved": videos_saved,
         }
+    except YouTubeScanDisabledError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -143,6 +161,10 @@ async def scan_youtube(
             "videos_saved": videos_saved,
             "videos": [],
         }
+    except YouTubeScanDisabledError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -155,12 +177,19 @@ async def trigger_popular_scan(
 ):
     try:
         if payload is None:
-            return await scan_popular_videos()
-
-        return await scan_popular_videos(
-            region_codes=payload.region_codes,
-            max_results=payload.max_results,
-        )
+            result = await scan_popular_videos()
+        else:
+            result = await scan_popular_videos(
+                region_codes=payload.region_codes,
+                max_results=payload.max_results,
+            )
+        if result["status"] == "disabled":
+            raise YouTubeScanDisabledError(result["reason"])
+        return result
+    except YouTubeScanDisabledError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except YouTubeScanMigrationRequiredError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -169,4 +198,4 @@ async def trigger_popular_scan(
 
 @router.get("/debug-trending")
 async def debug_trending():
-    return await scan_popular_videos()
+    return await trigger_popular_scan()

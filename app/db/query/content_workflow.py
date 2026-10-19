@@ -2,7 +2,14 @@ from datetime import timedelta
 from uuid import uuid4
 from sqlalchemy import select, text
 from app.db.models.article import Article
-from app.db.models.content_workflow import ContentTopic, ContentRun, ContentVersion, ContentQA, ContentAudit, TopicIdentifier, now
+from app.db.models.content_workflow import ContentTopic, ContentRun, ContentVersion, ContentQA, ContentAudit, TopicIdentifier, ContentResearchSettings, now
+
+async def research_settings(db, lock=False):
+    stmt = select(ContentResearchSettings).where(ContentResearchSettings.id == 1)
+    if lock:
+        # Refresh an already-loaded row after waiting for another editor's lock.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 async def topic(db, topic_id, lock=False):
     stmt = select(ContentTopic).where(ContentTopic.topic_id == topic_id)

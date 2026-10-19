@@ -1,10 +1,21 @@
 """Inventory and durable editorial workspace. Public articles stay separate."""
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
 from app.db.base import Base
 
 def now():
     return datetime.now(timezone.utc)
+
+class ContentResearchSettings(Base):
+    __tablename__ = 'content_research_settings'
+    id = Column(Integer, primary_key=True, autoincrement=False)
+    version = Column(Integer, nullable=False, default=1)
+    instructions = Column(Text, nullable=False)
+    source_groups = Column(JSON, nullable=False)
+    __table_args__ = (
+        CheckConstraint('id = 1', name='ck_content_research_settings_singleton'),
+        CheckConstraint('version >= 1', name='ck_content_research_settings_version'),
+    )
 
 class TopicIdentifier(Base):
     __tablename__ = 'content_topic_identifiers'

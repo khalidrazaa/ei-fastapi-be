@@ -1,8 +1,56 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+class ResearchSourceGroup(StrictModel):
+    name: str = Field(min_length=1, max_length=100)
+    urls: list[str] = Field(max_length=50)
+
+    @field_validator('urls')
+    @classmethod
+    def public_urls(cls, values):
+        from app.services.content_policy import safe_url
+        cleaned = []
+        for value in values:
+            if not 1 <= len(value) <= 2048 or any(
+                c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value
+            ) or not safe_url(value):
+                raise ValueError('Sources must be public HTTPS URLs up to 2048 characters.')
+            TypeAdapter(HttpUrl).validate_python(value)
+            if value not in cleaned:
+                cleaned.append(value)
+        return cleaned
+
+class ResearchSettingsInput(StrictModel):
+    expected_version: int = Field(ge=0, strict=True)
+    instructions: str = Field(min_length=1, max_length=20000)
+    source_groups: list[ResearchSourceGroup] = Field(max_length=20)
+
+    @model_validator(mode='after')
+    def clean_groups(self):
+        groups, seen = {}, set()
+        for group in self.source_groups:
+            key = group.name.casefold()
+            target = groups.setdefault(key, {'name': group.name, 'urls': []})
+            for url in group.urls:
+                if url not in seen:
+                    target['urls'].append(url)
+                    seen.add(url)
+            if len(target['urls']) > 50:
+                raise ValueError('A source group can contain at most 50 unique URLs.')
+        if len(seen) > 100:
+            raise ValueError('Research settings can contain at most 100 unique source URLs.')
+        self.source_groups = [
+            ResearchSourceGroup(**group) for group in groups.values() if group['urls']
+        ]
+        return self
+
+class ResearchSettingsResponse(StrictModel):
+    version: int
+    instructions: str
+    source_groups: list[ResearchSourceGroup]
 
 class TopicInput(StrictModel):
     title: str = Field(min_length=3, max_length=300)
@@ -16,7 +64,7 @@ class TopicEdit(TopicInput):
     archived: bool = False
 
 class Brief(StrictModel):
-    audience: str = Field(default='CEOs and managers', max_length=1000)
+    audience: str = Field(default='Business leaders, managers, and decision-makers with moderate technical knowledge', max_length=1000)
     scenario: str = Field(default='', max_length=3000)
     scope: str = Field(min_length=5, max_length=5000)
     exclusions: str = Field(default='', max_length=3000)

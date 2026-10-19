@@ -5,7 +5,9 @@ from app.core.admin_security import require_admin
 from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.content_workflow import TopicInput, TopicEdit, BriefEdit, RunInput, VersionInput, SaveDraftInput, ImportInput
+from app.schemas.content_workflow import ResearchSettingsInput, ResearchSettingsResponse
 from app.services import content_workflow as service
+from app.services import content_research_settings as research_settings_service
 
 def enabled():
     if not settings.CONTENT_WORKFLOW_ENABLED: raise HTTPException(404, 'Content workflow is disabled.')
@@ -15,9 +17,17 @@ router = APIRouter(dependencies=[Depends(require_admin), Depends(enabled)])
 async def invoke(awaitable):
     try: return await awaitable
     except LookupError as exc: raise HTTPException(404, str(exc)) from exc
-    except service.Conflict as exc: raise HTTPException(409, str(exc)) from exc
+    except (service.Conflict, research_settings_service.Conflict) as exc: raise HTTPException(409, str(exc)) from exc
     except ValueError as exc: raise HTTPException(400, str(exc)) from exc
     except IntegrityError as exc: raise HTTPException(409, 'Concurrent change or duplicate value. Reload and retry.') from exc
+
+@router.get('/content-research-settings', response_model=ResearchSettingsResponse)
+async def get_research_settings(db: AsyncSession = Depends(get_db)):
+    return await invoke(research_settings_service.get_settings(db))
+
+@router.put('/content-research-settings', response_model=ResearchSettingsResponse)
+async def save_research_settings(payload: ResearchSettingsInput, db: AsyncSession = Depends(get_db)):
+    return await invoke(research_settings_service.save_settings(db, payload))
 
 @router.get('/content-articles/{article_id}')
 async def evidence(article_id: int, db: AsyncSession = Depends(get_db)):

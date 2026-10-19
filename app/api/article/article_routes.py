@@ -8,12 +8,24 @@ from app.db.session import get_db
 from app.schemas.article import (
     ArticleBulkDeleteRequest,
     ArticleDeleteResponse,
+    ArticleDraftCreate,
     ArticleResponse,
     ArticleUpdate,
 )
 from app.services import article_service
 
 router = APIRouter(dependencies=[Depends(require_admin)])
+
+
+@router.post("", response_model=ArticleResponse, status_code=201)
+async def create_article_route(
+    payload: ArticleDraftCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await article_service.create_draft(db, payload.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post(

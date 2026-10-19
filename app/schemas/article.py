@@ -63,6 +63,10 @@ class ArticleCreate(ArticleBase):
     content: str
 
 
+class ArticleDraftCreate(ArticleCreate):
+    status: Literal["draft"] = "draft"
+
+
 # For updating an existing article
 class ArticleUpdate(BaseModel):
     expected_updated_at: Optional[datetime] = None

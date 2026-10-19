@@ -10,6 +10,9 @@ from app.db.session import SessionLocal
 from app.services.analyzer.idea_generator import IdeaGenerator
 from app.services.analyzer.trend_analyzer import TrendAnalyzer
 from app.services.popular_scan_settings import (
+    YouTubeScanDisabledError,
+    YouTubeScanMigrationRequiredError,
+    ensure_youtube_scan_enabled,
     get_or_create_popular_scan_settings,
     normalize_max_results,
     normalize_region_codes,
@@ -20,6 +23,12 @@ from app.services.scanner.youtube_scan_service import YouTubeScanService
 
 async def scan_all_niches():
     async with SessionLocal() as db:
+        try:
+            await ensure_youtube_scan_enabled(db, "niche")
+        except YouTubeScanDisabledError as exc:
+            print(str(exc))
+            return
+
         niches = await get_all_niches(db)
 
         if not niches:
@@ -36,6 +45,11 @@ async def scan_all_niches():
             try:
                 print(f"Scanning niche: {niche.name}")
                 await scanner.scan_niche(niche.id)
+            except YouTubeScanDisabledError as exc:
+                print(str(exc))
+                break
+            except YouTubeScanMigrationRequiredError:
+                raise
             except Exception as exc:
                 print(f"Niche scan failed {niche.id}: {str(exc)}")
 
@@ -91,8 +105,6 @@ async def scan_popular_videos(
     Fetch most popular videos by region and store them.
     """
 
-    youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
-
     async with SessionLocal() as db:
         stored_settings = await get_or_create_popular_scan_settings(db)
         resolved_regions = normalize_region_codes(region_codes) or list(
@@ -102,12 +114,26 @@ async def scan_popular_videos(
             max_results or int(stored_settings["max_results"])
         )
 
+        try:
+            await ensure_youtube_scan_enabled(db, "popular")
+        except YouTubeScanDisabledError as exc:
+            print(str(exc))
+            return {
+                "status": "disabled",
+                "regions": resolved_regions,
+                "max_results": resolved_max_results,
+                "total_processed": 0,
+                "reason": str(exc),
+            }
+
+        youtube_client = YouTubeClient(settings.YOUTUBE_API_KEY)
         scanner = YouTubeScanService(
             db_session=db,
             youtube_client=youtube_client,
         )
 
         total_processed = 0
+        disabled_reason = None
 
         for region in resolved_regions:
             try:
@@ -116,6 +142,12 @@ async def scan_popular_videos(
                     max_results=resolved_max_results,
                 )
                 total_processed += count
+            except YouTubeScanDisabledError as exc:
+                disabled_reason = str(exc)
+                print(disabled_reason)
+                break
+            except YouTubeScanMigrationRequiredError:
+                raise
             except Exception as exc:
                 print(f"Region failed {region}: {str(exc)}")
 
@@ -124,8 +156,9 @@ async def scan_popular_videos(
         print(f"Popular videos scan complete. Total processed: {total_processed}")
 
         return {
-            "status": "done",
+            "status": "disabled" if disabled_reason else "done",
             "regions": resolved_regions,
             "max_results": resolved_max_results,
             "total_processed": total_processed,
+            "reason": disabled_reason,
         }

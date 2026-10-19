@@ -8,6 +8,7 @@ from app.db.query import content_workflow as q
 from app.db.models.content_workflow import ContentRun, ContentVersion, ContentQA, now
 from app.services.content_ai import ContentAI
 from app.services.content_gemini import GeminiContentAI
+from app.services.content_research_defaults import snapshot_research_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ async def finish(db, job_id, token, result=None, error=None):
         job.status, job.error = 'failed', 'Brief changed; result discarded. Start a new run.'
     elif error:
         job.status, job.error = 'failed', error
+        # Failure diagnostics retain usage metadata, never partial content.
+        job.result = (
+            {'usage': result['usage']}
+            if isinstance(result, dict) and result.get('usage') else None
+        )
     else:
         job.status, job.result, job.error = 'completed', result, None
         if job.stage == 'research':
@@ -37,7 +43,8 @@ async def finish(db, job_id, token, result=None, error=None):
             # Release unique active-run slot before inserting auto-QA in this transaction.
             await db.flush()
             await q.add(db, ContentRun(id=str(uuid4()), topic_id=topic.topic_id, stage='qa',
-                request_key=f'qa-{version.id}', inputs={**job.inputs, 'payload': version.payload, 'version_id': version.id}))
+                request_key=f'qa-{version.id}', inputs={**job.inputs, 'payload': version.payload, 'version_id': version.id,
+                    'research_settings': snapshot_research_settings(job.inputs)}))
         elif job.stage == 'qa':
             await q.add(db, ContentQA(version_id=job.inputs['version_id'], report=result))
         topic.version += 1
@@ -65,6 +72,8 @@ async def tick():
                 error = 'OpenAI API credit or quota is exhausted. Restore API credit/quota for the configured key, then retry this stage.'
             elif exc.status_code == 429:
                 error = 'OpenAI rate limit reached. Wait briefly, then retry this stage.'
+        if ai and ai.usage:
+            result = {'usage': ai.usage}
     finally:
         if ai: await ai.close()
     async with SessionLocal() as db:

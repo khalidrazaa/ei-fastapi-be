@@ -7,6 +7,8 @@ from app.db.models.article import Article
 from app.db.models.content_workflow import ContentTopic, ContentRun, ContentVersion, now
 from app.schemas.content_workflow import TopicInput, DraftPayload
 from app.services.content_policy import fingerprint, overlaps
+from app.services.content_research_defaults import snapshot_research_settings
+from app.services.content_research_settings import get_settings
 
 class Conflict(ValueError): pass
 
@@ -111,6 +113,10 @@ async def start(db, topic_id, payload, actor):
               'brief_version': item.brief_version, 'research_id': research.id if research else None,
               'research': research.result if research else None, 'version_id': version.id if version else None,
               'payload': version.payload if version else None, 'qa': reports[0].report if reports else None}
+    inputs['research_settings'] = (
+        await get_settings(db) if payload.stage == 'research'
+        else snapshot_research_settings(research.inputs)
+    )
     job = ContentRun(id=str(uuid4()), topic_id=topic_id, stage=payload.stage, request_key=payload.request_key, inputs=inputs)
     await q.add(db, job)
     await q.audit(db, topic_id, actor, 'run_started', {'run_id': job.id, 'stage': job.stage})

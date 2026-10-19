@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from slugify import slugify
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.article import Article
@@ -398,6 +399,41 @@ def _normalize_article_update_payload(payload: dict[str, Any]) -> dict[str, Any]
         updates["open_graph_image"] = _normalize_optional_string(payload["open_graph_image"])
 
     return updates
+
+
+async def create_draft(db: AsyncSession, payload: dict[str, Any]) -> Article:
+    if _normalize_status(payload.get("status"), strict=True) != "draft":
+        raise ValueError("New articles must be saved as drafts.")
+
+    values = _normalize_article_update_payload(payload)
+    values["title"] = _normalize_required_string(payload.get("title"), "Title")
+    values["slug"] = _normalize_slug(payload.get("slug"))
+    values["content"] = _normalize_optional_string(payload.get("content"))
+    values["status"] = "draft"
+    values["host_site"] = _normalize_host_site(payload.get("host_site"))
+    values["tags"] = _normalize_list(payload.get("tags"))
+    values["keywords"] = _normalize_list(payload.get("keywords"))
+    values["language"] = str(payload.get("language") or "en").strip() or "en"
+    values["schema_type"] = _normalize_optional_string(payload.get("schema_type")) or "Article"
+    values["is_featured"] = _normalize_bool(payload.get("is_featured", False))
+    values["drafted_at"] = datetime.now(timezone.utc)
+    values["published_at"] = None
+    if values.get("reading_time") is None:
+        values["reading_time"] = (
+            _estimate_reading_time(values["content"]) if values["content"] else None
+        )
+
+    if await article_query.get_article_by_slug(db, values["slug"]):
+        raise ValueError("Slug is already in use.")
+
+    try:
+        return await article_query.create_article(db, **values)
+    except IntegrityError:
+        await db.rollback()
+        # A concurrent save can claim the slug after the availability check.
+        if await article_query.get_article_by_slug(db, values["slug"]):
+            raise ValueError("Slug is already in use.") from None
+        raise
 
 
 async def update_article(

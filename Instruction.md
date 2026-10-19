@@ -1,51 +1,36 @@
-# explainit.tech-fastapi
-# run the app 
-uv run uvicorn app.main:app --reload
+# Backend maintenance
 
-fastapi backend for explaintit.tech
+Run from the backend directory. See [README](README.md) for setup/startup, [Codespaces](.devcontainer/README.md), and [worker deployment](docs/content-workflow.md#vps-deployment-with-docker-compose).
 
-# Step 1: generate new migration file from updated models
+## Migrations
 
-# alembic installed for migration:
-# For first time  
-alembic revision --autogenerate -m "initial schema"
-alembic revision --autogenerate -m "add niche and niche_keyword tables"
+Register new models in `app/db/models/__init__.py`. Back up the database and review generated changes before applying them. Use the installation's existing migration method.
 
-alembic upgrade head
+Alembic uses `ALEMBIC_DATABASE_URL`:
 
-# manual migration
+```sh
+uv run alembic revision --autogenerate -m "describe schema change"
+uv run alembic upgrade head
+```
 
-# Run Migration scripts
-import new model in "geneerate_sql_from_models.py" file.
-python -m migrations.generate_sql_from_models
-    ## this script will generate .sql file 
+SQL workflow:
 
-# Step 2: apply the migration(s) to DB
-python -m migrations.migration_script
+```sh
+uv run python -m migrations.generate_sql_from_models
+uv run python -m migrations.migration_script --file REVIEWED_FILE.sql
+```
 
-# In your project folder (where Dockerfile is), run:
+The generator inspects the database and writes new tables/columns to `migrations/history_sql_mig`; it is not a complete schema diff. Replace `REVIEWED_FILE.sql` with the reviewed filename. The runner uses `ALEMBIC_DATABASE_URL` or `DATABASE_URL`, checks `DB_NAME`, and commits each file with its `schema_migrations` entry. Without `--file`, it applies all untracked files. SQL and Alembic histories are separate; do not apply equivalent changes twice.
+
+## Local Docker image
+
+```sh
 docker build -t explainit-fastapi:local .
+docker run --rm --env-file .env -e PORT=10000 -p 8000:10000 explainit-fastapi:local
+```
 
-# -t explainit-fastapi:local → this is your local image tag.
-# . → context is current directory.
+Open <http://localhost:8000>. `PORT` sets Gunicorn's container port; `-p` maps the host port. This starts only the API. For a shell:
 
-# Render uses the $PORT environment variable, so locally we can simulate it. For example:
-docker run -it --rm -p 8000:10000 -e PORT=10000 explainit-fastapi:local
-
-# Explanation:
-# -p 8000:10000 → map container port 10000 to host port 8000.
-# -e PORT=10000 → sets the PORT env variable inside the container (used by your CMD).
-# --rm → removes the container when stopped.
-# -it → interactive mode, so you can see logs.
-# Then open in browser: http://localhost:8000
-
-
-# 4️⃣ Optional: Override environment variables locally
-# You can pass a .env file:
-docker run --env-file .env -p 8000:10000 explainit-fastapi:local
-
-# Test commands inside container (optional)
-docker run -it --rm -e PORT=10000 explainit-fastapi:local /bin/bash
-
-# This drops you into the container shell.
-# You can check installed packages, DB connectivity, etc.
+```sh
+docker run -it --rm --env-file .env explainit-fastapi:local /bin/bash
+```
