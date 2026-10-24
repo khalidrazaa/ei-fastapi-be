@@ -37,7 +37,7 @@ The application prefix is `/v1`. These endpoints require `host_site` and the `X-
 
 | Method | Path |
 | --- | --- |
-| GET | `/v1/public/articles?host_site=explainit.tech&limit=100` |
+| GET | `/v1/public/articles?host_site=explainit.tech&page=1&size=100` |
 | GET | `/v1/public/articles/{slug}?host_site=explainit.tech` |
 | GET, POST | `/v1/public/articles/{slug}/comments?host_site=explainit.tech` |
 | POST | `/v1/public/contact?host_site=explainit.tech` |
@@ -49,6 +49,16 @@ Create/activate the host in backend settings, then manage keys through `GET /v1/
 ```
 
 Store the one-time returned `api_key` as the public frontend's server-only `PUBLIC_APP_KEY`. Database keys are hashed; backend `PUBLIC_APP_KEYS` is a legacy fallback.
+
+## Article pagination
+
+Use `page` (starting at 1) and `size` (1–100, default 20) on `/v1/admin/articles` and `/v1/public/articles`. Responses contain `items`, `total`, `page`, `size`, `total_pages`, `has_next` and `has_previous`. Filters apply before counting and pagination; results use newest creation time first, with descending article ID to break ties. Empty matches return zero total pages; out-of-range pages return an empty `items` array.
+
+Admin lists also accept `status`, `category` and literal substring `search` across title, slug and category. Their `categories` array (`name`, `count`) and `category_total` describe the full status-filtered list, independently of search, selected category and page. Blank categories appear as `Uncategorized`. Admin rows load in pages, while the public app fetches every page at build time to generate its static article snapshot and all published article pages, including libraries larger than 500 articles.
+
+`GET /v1/admin/articles/categories` returns distinct nonempty category names from drafts and published articles across all hosts, sorted alphabetically with surrounding spaces removed. The authenticated editor uses this lightweight list for its category dropdown and also accepts custom category text; no article bodies are fetched for these options.
+
+For existing clients, calls without pagination or admin category/search parameters keep returning an array using the legacy `limit` parameter (default 100, maximum 500). Updated frontends explicitly send `page` and `size`; deploy the backend before those frontends. No database migration is required.
 
 ## Contact leads
 

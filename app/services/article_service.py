@@ -284,6 +284,31 @@ async def get_article(
     return article
 
 
+async def list_article_categories(db: AsyncSession) -> list[str]:
+    return await article_query.list_article_categories(db)
+
+
+async def list_article_page(
+    db: AsyncSession,
+    *,
+    status: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    page: int = 1,
+    size: int = 20,
+) -> dict[str, Any]:
+    normalized_status = _normalize_status(status, strict=True) if status else None
+    return await article_query.list_article_page(
+        db,
+        status=normalized_status,
+        category=_normalize_optional_string(category),
+        search=_normalize_optional_string(search),
+        page=page,
+        size=size,
+        include_categories=True,
+    )
+
+
 async def delete_articles(
     db: AsyncSession, article_ids: list[int]
 ) -> dict[str, Any]:
@@ -321,6 +346,22 @@ async def list_published_articles_for_host(
         status="published",
         host_site=normalized_host,
         limit=limit,
+    )
+
+
+async def list_published_article_page_for_host(
+    db: AsyncSession,
+    *,
+    host_site: str,
+    page: int = 1,
+    size: int = 20,
+) -> dict[str, Any]:
+    return await article_query.list_article_page(
+        db,
+        status="published",
+        host_site=_normalize_host_for_lookup(host_site),
+        page=page,
+        size=size,
     )
 
 

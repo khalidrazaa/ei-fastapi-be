@@ -105,6 +105,26 @@ class ArticleResponse(ArticleBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ArticlePage(BaseModel):
+    items: list[ArticleResponse]
+    total: int
+    page: int
+    size: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+
+
+class ArticleCategoryCount(BaseModel):
+    name: str
+    count: int
+
+
+class AdminArticlePage(ArticlePage):
+    categories: list[ArticleCategoryCount]
+    category_total: int
+
+
 class ArticleDraftGenerateRequest(BaseModel):
     provider: Literal["gemini", "chatgpt"] = "gemini"
     prompt: Optional[str] = None
