@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.admin import admin_routes, lead_routes
-from app.api.article import article_routes, public_article_routes
+from app.api.article import article_media_routes, article_routes, public_article_routes
 from app.api.auth import auth_routes
 from app.api.contact import public_contact_routes
 from app.api.niche import niche_routes
@@ -13,6 +13,7 @@ from app.api.youtube import youtube_routes
 from app.api.admin.content_routes import router as content_router
 
 router = APIRouter()
+router.include_router(article_media_routes.router, prefix="/media", tags=["article-media"])
 router.include_router(content_router, prefix="/admin", tags=["content-workflow"])
 
 router.include_router(auth_routes.router, prefix="/auth", tags=["auth"])

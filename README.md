@@ -50,6 +50,10 @@ Create/activate the host in backend settings, then manage keys through `GET /v1/
 
 Store the one-time returned `api_key` as the public frontend's server-only `PUBLIC_APP_KEY`. Database keys are hashed; backend `PUBLIC_APP_KEYS` is a legacy fallback.
 
+## Markdown diagram uploads
+
+The admin editor saves a reviewed Markdown article and its SVG/PNG diagrams in one multipart request. Images stay in a persistent directory on the existing VPS and receive permanent browser-public URLs; no S3 service is used. Apply Alembic `c04_article_images` or SQL `012_article_images.sql`, set `MEDIA_PUBLIC_BASE_URL` including `/v1`, and mount the media directory before using uploads. See [article image upload](docs/article-image-upload.md) for API fields, SVG compatibility, Compose/proxy setup, retries, retention and backups. Rebuild the public frontend after publication to refresh its static article pages.
+
 ## Article pagination
 
 Use `page` (starting at 1) and `size` (1–100, default 20) on `/v1/admin/articles` and `/v1/public/articles`. Responses contain `items`, `total`, `page`, `size`, `total_pages`, `has_next` and `has_previous`. Filters apply before counting and pagination; results use newest creation time first, with descending article ID to break ties. Empty matches return zero total pages; out-of-range pages return an empty `items` array.

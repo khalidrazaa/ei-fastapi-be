@@ -2,6 +2,7 @@ from .admin_user import AdminUser
 from .email_otp import EmailOTP
 from .token import Token
 from .article import Article
+from .article_image import ArticleImage, ArticleImport
 from .niche import Niche, NicheKeyword
 from .trend_video import TrendVideo
 from .trends import TrendItem, TrendStatus
@@ -21,6 +22,8 @@ __all__ = [
     "EmailOTP",
     "Token",
     "Article",
+    "ArticleImage",
+    "ArticleImport",
     "Niche",
     "NicheKeyword",
     "TrendVideo",

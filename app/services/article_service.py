@@ -11,6 +11,7 @@ from app.db.models.trend_video import TrendVideo
 from app.db.query import article as article_query
 from app.services.gemini_service import GeminiClient
 from app.services.openai_service import OpenAIClient
+from app.services.article_markdown_images import validate_published_images
 
 
 DEFAULT_HOST_SITE = "explainit.tech"
@@ -442,7 +443,7 @@ def _normalize_article_update_payload(payload: dict[str, Any]) -> dict[str, Any]
     return updates
 
 
-async def create_draft(db: AsyncSession, payload: dict[str, Any]) -> Article:
+async def create_draft(db: AsyncSession, payload: dict[str, Any], *, commit: bool = True) -> Article:
     if _normalize_status(payload.get("status"), strict=True) != "draft":
         raise ValueError("New articles must be saved as drafts.")
 
@@ -468,6 +469,8 @@ async def create_draft(db: AsyncSession, payload: dict[str, Any]) -> Article:
         raise ValueError("Slug is already in use.")
 
     try:
+        if not commit:
+            return await article_query.create_article(db, commit=False, **values)
         return await article_query.create_article(db, **values)
     except IntegrityError:
         await db.rollback()
@@ -481,6 +484,8 @@ async def update_article(
     db: AsyncSession,
     article_id: int,
     payload: dict[str, Any],
+    *,
+    commit: bool = True,
 ) -> Article:
     article = await article_query.get_article_for_update(db, article_id)
     if article is None:
@@ -492,6 +497,8 @@ async def update_article(
     updates = _normalize_article_update_payload(payload)
     if not updates:
         return article
+    if updates.get("status", article.status) == "published":
+        validate_published_images(updates.get("content", article.content) or "")
 
     next_slug = updates.get("slug")
     if next_slug:
@@ -512,6 +519,8 @@ async def update_article(
     if next_status == "draft" and "drafted_at" not in updates:
         updates["drafted_at"] = article.drafted_at or now
 
+    if not commit:
+        return await article_query.update_article(db, article, commit=False, **updates)
     return await article_query.update_article(db, article, **updates)
 
 

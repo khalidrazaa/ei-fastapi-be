@@ -11,6 +11,9 @@ services:
       - .env
     environment:
       PORT: "${PORT:-8000}"
+      MEDIA_ROOT: /var/lib/explainit/media
+    volumes:
+      - "${MEDIA_HOST_PATH:-./var/media}:/var/lib/explainit/media"
     ports:
       - "${API_PORT:-8000}:${PORT:-8000}"
     depends_on:

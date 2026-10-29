@@ -124,10 +124,13 @@ async def list_article_page(
     return result
 
 
-async def create_article(db: AsyncSession, **values) -> Article:
+async def create_article(db: AsyncSession, *, commit: bool = True, **values) -> Article:
     article = Article(**values)
     db.add(article)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(article)
     return article
 
@@ -135,11 +138,16 @@ async def create_article(db: AsyncSession, **values) -> Article:
 async def update_article(
     db: AsyncSession,
     article: Article,
+    *,
+    commit: bool = True,
     **values,
 ) -> Article:
     for field, value in values.items():
         setattr(article, field, value)
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(article)
     return article

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY : str
     YOUTUBE_BASE_URL: str
     PUBLIC_APP_KEYS: str = ""
+    # Public base includes /v1, e.g. https://api.explainit.tech/v1.
+    MEDIA_PUBLIC_BASE_URL: str = ""
+    MEDIA_ROOT: str = "./var/media"
+    MEDIA_MAX_IMAGE_BYTES: int = Field(default=5 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
+    MEDIA_MAX_BATCH_BYTES: int = Field(default=50 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+    MEDIA_MAX_IMAGES: int = Field(default=10, gt=0, le=100)
+    MEDIA_MAX_PIXELS: int = Field(default=24_000_000, gt=0, le=40_000_000)
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:

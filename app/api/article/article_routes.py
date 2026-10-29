@@ -1,9 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+import json
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile
 
 from app.core.admin_security import require_admin
+from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.article import (
     AdminArticlePage,
@@ -13,9 +19,81 @@ from app.schemas.article import (
     ArticleResponse,
     ArticleUpdate,
 )
-from app.services import article_service
+from app.services import article_media_service, article_service
 
 router = APIRouter(dependencies=[Depends(require_admin)])
+logger = logging.getLogger(__name__)
+IMPORT_BODY = {"requestBody": {"required": True, "content": {"multipart/form-data": {"schema": {
+    "type": "object", "required": ["article", "request_id"], "properties": {
+        "article": {"type": "string", "description": "Reviewed article JSON"},
+        "request_id": {"type": "string", "format": "uuid"},
+        "manifest": {"type": "string", "default": "{}"},
+        "images": {"type": "array", "items": {"type": "string", "format": "binary"}},
+    },
+}}}}}
+
+
+async def _import_article(article_json, manifest_json, request_id, images, admin, db, article_id=None):
+    try:
+        if len(article_json.encode("utf-8")) > 3 * 1024 * 1024 or len(manifest_json.encode("utf-8")) > 65536:
+            raise ValueError("Article metadata or image manifest is too large.")
+        schema = ArticleDraftCreate if article_id is None else ArticleUpdate
+        payload = schema.model_validate_json(article_json)
+        manifest = TypeAdapter(dict[str, str]).validate_json(manifest_json)
+        return await article_media_service.import_article(db,
+            payload=payload.model_dump(exclude_unset=article_id is not None),
+            manifest=manifest, request_id=request_id, images=images or [],
+            admin_id=str(admin.id), article_id=article_id,
+            metadata_bytes=len(article_json.encode("utf-8")) + len(manifest_json.encode("utf-8")) + len(request_id.encode("utf-8")))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=json.loads(exc.json(include_input=False))) from exc
+    except article_media_service.ImportConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.exception("Article media storage is unavailable")
+        raise HTTPException(status_code=503, detail="Article image storage is unavailable. Retry the same save.") from exc
+
+
+async def _read_import_form(request, admin, db, article_id=None):
+    # Explicit parsing avoids Starlette's default 1 MiB text-part limit and runs
+    # only after authentication. The context also closes rejected upload parts.
+    async with request.form(max_files=settings.MEDIA_MAX_IMAGES, max_fields=3,
+                            max_part_size=3 * 1024 * 1024) as form:
+        if set(form) - {"article", "manifest", "request_id", "images"}:
+            raise HTTPException(status_code=422, detail="Unexpected article import form field.")
+        for name in ("article", "request_id"):
+            if len(form.getlist(name)) != 1 or not isinstance(form[name], str):
+                raise HTTPException(status_code=422, detail=f"Provide one {name} form field.")
+        if len(form.getlist("manifest")) > 1 or not isinstance(form.get("manifest", "{}"), str):
+            raise HTTPException(status_code=422, detail="Provide one manifest JSON form field.")
+        images = form.getlist("images")
+        if any(not isinstance(upload, UploadFile) for upload in images):
+            raise HTTPException(status_code=422, detail="images must contain uploaded files.")
+        return await _import_article(form["article"], form.get("manifest", "{}"),
+            form["request_id"], images, admin, db, article_id)
+
+
+@router.post("/import", response_model=ArticleResponse, status_code=201, openapi_extra=IMPORT_BODY)
+async def import_article_route(
+    request: Request,
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _read_import_form(request, admin, db)
+
+
+@router.put("/{article_id}/import", response_model=ArticleResponse, openapi_extra=IMPORT_BODY)
+async def update_article_import_route(
+    article_id: Annotated[int, Path(gt=0)],
+    request: Request,
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _read_import_form(request, admin, db, article_id)
 
 
 @router.post("", response_model=ArticleResponse, status_code=201)
