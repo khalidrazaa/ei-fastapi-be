@@ -13,10 +13,10 @@ load_dotenv()
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-import os
+# ConfigParser must preserve the URL's percent-encoded credentials verbatim.
 config.set_main_option(
     "sqlalchemy.url",
-    os.getenv("ALEMBIC_DATABASE_URL")
+    os.environ["ALEMBIC_DATABASE_URL"].replace("%", "%%")
 )
 
 # Interpret the config file for Python logging.
