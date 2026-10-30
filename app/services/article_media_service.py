@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.core.config import settings
 from app.db.query import article as article_query
@@ -21,6 +21,10 @@ from app.schemas.article import ArticleResponse
 from app.services import article_service
 from app.services.article_image_validation import validate_png, validate_svg
 from app.services.article_markdown_images import resolve_images, rewrite_images
+from app.services.article_media_schema import (
+    ArticleMediaMigrationRequiredError,
+    is_missing_article_media_schema,
+)
 
 logger = logging.getLogger(__name__)
 STORAGE_NAME = re.compile(r"^[0-9a-f]{32}\.(?:svg|png)$")
@@ -174,7 +178,7 @@ async def import_article(db, *, payload: dict, manifest: dict[str, str], request
         receipt.response = response.model_dump(mode="json")
         await db.commit()
         return response
-    except Exception:
+    except Exception as error:
         await db.rollback()
         if finalized:
             # A connection can fail after COMMIT reached PostgreSQL. Never remove
@@ -187,6 +191,8 @@ async def import_article(db, *, payload: dict, manifest: dict[str, str], request
                 if committed is None:
                     for path in finalized:
                         await asyncio.to_thread(path.unlink, missing_ok=True)
+        if isinstance(error, DBAPIError) and is_missing_article_media_schema(error):
+            raise ArticleMediaMigrationRequiredError() from error
         raise
     finally:
         if stage.exists():
@@ -198,7 +204,13 @@ async def import_article(db, *, payload: dict, manifest: dict[str, str], request
 async def get_public_image(db, article_id: int, storage_name: str):
     if article_id <= 0 or not STORAGE_NAME.fullmatch(storage_name):
         raise LookupError("Image not found.")
-    record = await image_query.get_image(db, article_id, storage_name)
+    try:
+        record = await image_query.get_image(db, article_id, storage_name)
+    except DBAPIError as error:
+        if not is_missing_article_media_schema(error):
+            raise
+        await db.rollback()
+        raise ArticleMediaMigrationRequiredError() from error
     if record is None:
         raise LookupError("Image not found.")
     path = media_root() / "articles" / str(article_id) / storage_name

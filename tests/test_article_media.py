@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jose import jwt
 from markdown_it import MarkdownIt
-from sqlalchemy import JSON, MetaData, create_engine, event, select
+from sqlalchemy import JSON, MetaData, create_engine, event, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -137,6 +137,58 @@ class MarkdownImageTests(unittest.TestCase):
         result = self.rewrite(source, ["new.svg"], {"https://old.example/a.svg": "new.svg", "/images/a.svg": "new.svg"})
         self.assertEqual(result.count("https://api.example/v1/new.svg"), 2)
 
+    def test_svg_png_formats_match_same_diagram_name_without_manifest(self):
+        for reference, filename in (
+            ("diagrams/flow.png", "flow.svg"),
+            ("diagrams/flow.svg", "flow.png"),
+            ("diagrams/flow.PNG", "flow.SVG"),
+            ("diagrams/flow.SVG", "flow.PNG"),
+        ):
+            with self.subTest(reference=reference, filename=filename):
+                result = self.rewrite(f'![Diagram]({reference})', [filename])
+                self.assertEqual(result, f'![Diagram](<https://api.example/v1/{filename}>)')
+
+    def test_exact_filenames_and_paths_take_priority_over_format_fallback(self):
+        for source, files, expected in (
+            (
+                '![primary](diagrams/flow.png) ![other](flow.svg)',
+                ["flow.png", "flow.svg"], "flow.png",
+            ),
+            (
+                '![primary](diagrams/flow.png) ![other](other/flow.png)',
+                ["diagrams/flow.png", "other/flow.png"], "diagrams/flow.png",
+            ),
+            (
+                '![primary](diagrams/flow.png) ![other](diagrams/flow.svg)',
+                ["flow.png", "diagrams/flow.svg"], "flow.png",
+            ),
+            (
+                '![primary](diagrams/flow.png) ![other](other/flow.svg)',
+                ["diagrams/flow.svg", "other/flow.svg"], "diagrams/flow.svg",
+            ),
+        ):
+            with self.subTest(files=files):
+                _, resolved = resolve_images(source, files, {})
+                self.assertEqual(resolved[0][1], expected)
+
+    def test_format_fallback_rejects_ambiguity_and_unrelated_names(self):
+        for reference, files in (
+            ("diagrams/flow.png", ["one/flow.svg", "two/flow.svg"]),
+            ("flow.png", ["flow.svg", "flow.SVG"]),
+            ("diagrams/flow.png", ["one/flow.png", "two/flow.png", "diagrams/flow.svg"]),
+            ("flow.jpg", ["flow.svg"]),
+            ("flow.png", ["different.svg"]),
+        ):
+            with self.subTest(reference=reference, files=files), self.assertRaises(ValueError):
+                resolve_images(f'![Diagram]({reference})', files, {})
+
+    def test_manifest_overrides_automatic_matching_and_external_images_remain(self):
+        source = '![chosen](diagrams/flow.png) ![other](flow.png) ![external](https://images.example/flow.png)'
+        result = self.rewrite(source, ["flow.png", "replacement.svg"], {"diagrams/flow.png": "replacement.svg"})
+        self.assertIn('![chosen](<https://api.example/v1/replacement.svg>)', result)
+        self.assertIn('![other](<https://api.example/v1/flow.png>)', result)
+        self.assertIn('![external](https://images.example/flow.png)', result)
+
     def test_table_code_cell_is_not_mistaken_for_matching_real_image_cell(self):
         source = '| Code | Image |\n|---|---|\n| `![a](flow.svg)` | ![a](flow.svg) |\n'
         result = self.rewrite(source, ["flow.svg"])
@@ -239,6 +291,20 @@ class ArticleMediaTests(unittest.TestCase):
             self.assertEqual(self.client.get(path).status_code, 200)
         self.assertEqual(len(self.stored_files()), 2)
 
+    def test_png_markdown_reference_can_save_and_serve_matching_svg(self):
+        response = self.submit(source='![Diagram](images/flow.png)')
+        self.assertEqual(response.status_code, 201, response.text)
+        article = response.json()
+        image = self.session.scalars(select(ArticleImage)).one()
+        self.assertTrue(image.storage_name.endswith(".svg"))
+        self.assertEqual(image.mime_type, "image/svg+xml")
+        path = f'/v1/media/articles/{article["id"]}/{image.storage_name}'
+        self.assertEqual(article["content"], f'![Diagram](<https://api.example{path}>)')
+        media = self.client.get(path)
+        self.assertEqual(media.status_code, 200)
+        self.assertIn("image/svg+xml", media.headers["content-type"])
+        self.assertIn(b"Hello &amp; diagram", media.content)
+
     def test_same_request_replays_exact_response_without_duplicate_article_or_files(self):
         key = str(uuid4())
         first = self.submit(request_id=key)
@@ -257,6 +323,59 @@ class ArticleMediaTests(unittest.TestCase):
         self.assertEqual(list(self.session.scalars(select(Article))), [])
         self.assertEqual(list(self.session.scalars(select(ArticleImport))), [])
         self.assertEqual(self.stored_files(), [])
+
+    def test_missing_import_table_returns_migration_error_and_cleans_staging(self):
+        ArticleImport.__table__.drop(self.engine)
+        response = self.submit()
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertIn("012_article_images.sql or c04_article_images", response.json()["detail"])
+        self.assertNotIn("SELECT", response.text)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(list(self.session.scalars(select(Article))), [])
+        self.assertEqual(self.stored_files(), [])
+        self.assertEqual(list((self.root / ".staging").iterdir()), [])
+
+    def test_missing_image_table_rolls_back_article_and_receipt(self):
+        ArticleImage.__table__.drop(self.engine)
+        response = self.submit()
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertIn("article image upload database migration", response.json()["detail"])
+        self.assertEqual(list(self.session.scalars(select(Article))), [])
+        self.assertEqual(list(self.session.scalars(select(ArticleImport))), [])
+        self.assertEqual(self.stored_files(), [])
+        self.assertEqual(list((self.root / ".staging").iterdir()), [])
+
+    def test_missing_import_column_returns_migration_error(self):
+        self.session.execute(text("ALTER TABLE article_imports DROP COLUMN response"))
+        self.session.commit()
+        response = self.submit()
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertIn("c04_article_images", response.json()["detail"])
+        self.assertEqual(list(self.session.scalars(select(Article))), [])
+        self.assertEqual(self.stored_files(), [])
+
+    def test_missing_image_insert_column_rolls_back_without_finalizing_files(self):
+        self.session.execute(text("ALTER TABLE article_images DROP COLUMN sha256"))
+        self.session.commit()
+        response = self.submit()
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(list(self.session.scalars(select(Article))), [])
+        self.assertEqual(list(self.session.scalars(select(ArticleImport))), [])
+        self.assertEqual(self.stored_files(), [])
+
+    def test_public_media_missing_table_or_column_returns_uncached_migration_error(self):
+        self.session.execute(text("ALTER TABLE article_images DROP COLUMN mime_type"))
+        self.session.commit()
+        path = '/v1/media/articles/1/' + uuid4().hex + '.svg'
+        missing_column = self.client.get(path)
+        self.assertEqual(missing_column.status_code, 503, missing_column.text)
+        self.assertIn("c04_article_images", missing_column.json()["detail"])
+        self.assertEqual(missing_column.headers["cache-control"], "no-store")
+        self.assertNotIn("SELECT", missing_column.text)
+        ArticleImage.__table__.drop(self.engine)
+        missing_table = self.client.get(path)
+        self.assertEqual(missing_table.status_code, 503, missing_table.text)
+        self.assertEqual(missing_table.headers["cache-control"], "no-store")
 
     def test_markdown_json_larger_than_one_mib_is_accepted(self):
         source = "A" * (1024 * 1024 + 100) + '\n![diagram](flow.svg)'

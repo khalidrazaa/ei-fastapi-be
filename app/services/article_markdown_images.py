@@ -110,6 +110,31 @@ def local_image_path(destination: str) -> str | None:
     return str(PurePosixPath(value))
 
 
+def _match_image_filename(path: str, filenames: list[str]) -> str | None:
+    reference = PurePosixPath(path)
+    candidates = [(name, PurePosixPath(name)) for name in filenames]
+    tiers = [
+        [name for name, candidate in candidates if candidate == reference],
+        [name for name, candidate in candidates if candidate.name == reference.name],
+    ]
+    # Diagram exports commonly change format while keeping the diagram name.
+    # Preserve full-filename matches first and never guess between alternatives.
+    if reference.suffix.lower() in {".png", ".svg"}:
+        diagrams = [(name, candidate) for name, candidate in candidates
+                    if candidate.suffix.lower() in {".png", ".svg"}]
+        tiers.extend([
+            [name for name, candidate in diagrams
+             if candidate.with_suffix("") == reference.with_suffix("")],
+            [name for name, candidate in diagrams if candidate.stem == reference.stem],
+        ])
+    for matches in tiers:
+        if len(matches) > 1:
+            raise ValueError(f"Multiple selected images match {path}. Choose an explicit image mapping.")
+        if matches:
+            return matches[0]
+    return None
+
+
 def resolve_images(content: str, filenames: list[str], manifest: dict[str, str]):
     text, references = markdown_images(content)
     available = set(filenames)
@@ -131,9 +156,7 @@ def resolve_images(content: str, filenames: list[str], manifest: dict[str, str])
         if path is None and filename is None:
             continue
         if filename is None and path is not None:
-            candidates = [name for name in filenames if name == path or PurePosixPath(name).name == PurePosixPath(path).name]
-            if len(candidates) == 1:
-                filename = candidates[0]
+            filename = _match_image_filename(path, filenames)
         if filename is None:
             raise ValueError(f"Select the image referenced by Markdown: {image.destination}")
         used.add(filename)

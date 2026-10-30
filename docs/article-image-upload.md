@@ -20,8 +20,13 @@ multipart form fields:
 | `images` | Repeated file part, zero or more SVG/PNG images with unique filenames |
 
 For example, `{"images/flow.svg":"flow.svg"}` maps
-`![How requests flow](images/flow.svg)` to `flow.svg`. Exact or unique basename
-matches also work without a manifest. Explicit mappings can replace existing
+`![How requests flow](images/flow.svg)` to `flow.svg`. Exact paths and unique
+basenames, including their extension, match without a manifest. When neither
+matches, local SVG/PNG references can use the same diagram name in the other
+format: `images/flow.png` can match `flow.svg`, and vice versa. Matching prefers
+the same path without its extension, then a unique basename without its extension;
+extension recognition is case-insensitive. Ambiguous alternatives require an
+explicit mapping. Explicit mappings take priority and can replace existing
 HTTP(S) or same-origin image URLs. Every uploaded image must be referenced by the
 article, and every local image reference must be matched. Relative paths are
 logical references; generated UUID filenames determine storage paths.
@@ -151,10 +156,32 @@ persistent media directory together. Restore them together and preserve the publ
 media origin/path. A database backup alone cannot restore diagrams. A schema
 downgrade deliberately leaves filesystem files untouched.
 
+## Missing migration troubleshooting
+
+If article imports or media requests return HTTP 503 with
+`012_article_images.sql or c04_article_images`, the API database is missing an
+article-upload table or required column. The upload is rolled back and temporary
+files are cleaned up; no automatic schema changes are attempted. Other database
+failures are not relabeled as migration problems.
+
+Back up the database, confirm the migration connection targets the same database
+as the running API, and apply the reviewed migration using the installation's
+existing history: `uv run alembic upgrade c04_article_images` for Alembic, or
+`uv run python -m migrations.migration_script --file 012_article_images.sql` for
+SQL-history installations. Use one method only, then retry the same save. If the
+migration is already recorded but tables/columns are absent, investigate the
+database target or schema drift before rerunning creation statements. Restarting
+the API alone does not apply a migration.
+
+If `DATABASE_URL` uses an SSH tunnel, its `localhost` address can still reach the
+live VPS database. Check the actual database name and migration history before
+changing schema. A separately configured `ALEMBIC_DATABASE_URL` can point at a
+different database; running its default upgrade will not repair the API target.
+
 ## Validation
 
-`uv run python -m unittest discover -s tests -p test_article_media.py` exercises
+`uv run python -m unittest discover -s tests -p 'test_article_media*.py'` exercises
 SVG/PNG policy, Markdown matching, public image headers, real isolated persistence,
 all-or-nothing failure, retry receipts, uncertain commit recovery, concurrent-save
-checks, retained images after deletion and reconciliation selection. The full
+checks, retained images after deletion, missing migrations and reconciliation selection. The full
 backend suite remains `uv run python -m unittest discover -s tests`.

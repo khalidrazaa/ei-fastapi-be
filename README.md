@@ -20,6 +20,22 @@ Backend for article publishing, editorial research/generation, YouTube trend int
 
 Keep both open. Restart the worker after worker code or `.env` changes. The [workflow guide](docs/content-workflow.md) covers shared Research Sources settings, providers, seed import and manual publication; [devcontainer setup](.devcontainer/README.md) covers Codespaces/Linux.
 
+### Open all development terminals automatically
+
+Open [blogging system.code-workspace](blogging%20system.code-workspace) in VS Code.
+Its startup tasks open four dedicated terminals and start FastAPI on port 8000,
+the content worker, admin UI on port 3001, and public UI on port 3000. Python uses
+the backend's existing `.venv`; both frontends use their existing `npm run dev`
+scripts. The public UI waits for FastAPI startup before fetching its article
+snapshot. Configure development databases and install dependencies before enabling
+these tasks. Opening only a repository folder does not load the workspace tasks.
+
+Trust the workspace and allow automatic tasks when VS Code prompts. If automatic
+tasks were previously disallowed, run **Tasks: Manage Automatic Tasks** from the
+Command Palette and choose **Allow Automatic Tasks**, then reopen the workspace.
+To launch them manually, use **Terminal > Run Task > Start all services**. Each
+service reuses its own terminal and allows one running task instance.
+
 ## Docker startup
 
 With `.env` configured and migrations applied:

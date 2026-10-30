@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.article_media_service import get_public_image
+from app.services.article_media_schema import ArticleMediaMigrationRequiredError
 
 router = APIRouter()
 
@@ -20,6 +21,8 @@ async def article_image_route(
 ):
     try:
         path, mime_type = await get_public_image(db, article_id, storage_name)
+    except ArticleMediaMigrationRequiredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers={"Cache-Control": "no-store"}) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return FileResponse(path, media_type=mime_type, headers={

@@ -49,6 +49,8 @@ async def _import_article(article_json, manifest_json, request_id, images, admin
         raise HTTPException(status_code=422, detail=json.loads(exc.json(include_input=False))) from exc
     except article_media_service.ImportConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except article_media_service.ArticleMediaMigrationRequiredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers={"Cache-Control": "no-store"}) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
