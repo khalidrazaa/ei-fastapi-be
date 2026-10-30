@@ -20,6 +20,22 @@ Backend for article publishing, editorial research/generation, YouTube trend int
 
 Keep both open. Restart the worker after worker code or `.env` changes. The [workflow guide](docs/content-workflow.md) covers shared Research Sources settings, providers, seed import and manual publication; [devcontainer setup](.devcontainer/README.md) covers Codespaces/Linux.
 
+### Open all development terminals automatically
+
+Open [blogging system.code-workspace](blogging%20system.code-workspace) in VS Code.
+Its startup tasks open four dedicated terminals and start FastAPI on port 8000,
+the content worker, admin UI on port 3001, and public UI on port 3000. Python uses
+the backend's existing `.venv`; both frontends use their existing `npm run dev`
+scripts. The public UI waits for FastAPI startup before fetching its article
+snapshot. Configure development databases and install dependencies before enabling
+these tasks. Opening only a repository folder does not load the workspace tasks.
+
+Trust the workspace and allow automatic tasks when VS Code prompts. If automatic
+tasks were previously disallowed, run **Tasks: Manage Automatic Tasks** from the
+Command Palette and choose **Allow Automatic Tasks**, then reopen the workspace.
+To launch them manually, use **Terminal > Run Task > Start all services**. Each
+service reuses its own terminal and allows one running task instance.
+
 ## Docker startup
 
 With `.env` configured and migrations applied:
@@ -49,6 +65,10 @@ Create/activate the host in backend settings, then manage keys through `GET /v1/
 ```
 
 Store the one-time returned `api_key` as the public frontend's server-only `PUBLIC_APP_KEY`. Database keys are hashed; backend `PUBLIC_APP_KEYS` is a legacy fallback.
+
+## Markdown diagram uploads
+
+The admin editor saves a reviewed Markdown article and its SVG/PNG diagrams in one multipart request. Images stay in a persistent directory on the existing VPS and receive permanent browser-public URLs; no S3 service is used. Apply Alembic `c04_article_images` or SQL `012_article_images.sql`, set `MEDIA_PUBLIC_BASE_URL` including `/v1`, and mount the media directory before using uploads. See [article image upload](docs/article-image-upload.md) for API fields, SVG compatibility, Compose/proxy setup, retries, retention and backups. Rebuild the public frontend after publication to refresh its static article pages.
 
 ## Article pagination
 

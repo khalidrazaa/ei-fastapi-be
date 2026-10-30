@@ -4,7 +4,10 @@ Create a Codespace from this backend repository. It uses Python 3.12 and Node 24
 
 Open [blogging system.code-workspace](../blogging%20system.code-workspace). Configure development databases, API keys, frontend API URLs, and allowed origins; setup provisions no databases and copies no secrets. Browser requests need the backend's forwarded Codespaces URL.
 
-Start each command in a separate terminal from the backend directory:
+After opening the workspace, trust it and allow automatic tasks to start FastAPI,
+the content worker, and both frontends in dedicated terminals. Use **Terminal >
+Run Task > Start all services** to start them manually. To start services outside
+the workspace tasks, run each command in a separate terminal from the backend directory:
 
 ```sh
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -24,4 +27,4 @@ cd ../ei-admin-ui-nextjs
 npm run dev -- --hostname 0.0.0.0 --port 3001
 ```
 
-Apps start manually; ports 8000/3000/3001 are labeled in the **Ports** panel. See [worker restart notes](../docs/content-workflow.md#local-development) and [migrations](../Instruction.md#migrations). For Playwright scraping, install Chromium once with `uv run playwright install --with-deps chromium`.
+Ports 8000/3000/3001 are labeled in the **Ports** panel. See [worker restart notes](../docs/content-workflow.md#local-development) and [migrations](../Instruction.md#migrations). For Playwright scraping, install Chromium once with `uv run playwright install --with-deps chromium`.

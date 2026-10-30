@@ -8,6 +8,11 @@ Register new models in `app/db/models/__init__.py`. Back up the database and rev
 
 Alembic uses `ALEMBIC_DATABASE_URL`:
 
+The existing migration environment uses a synchronous engine. Use
+`postgresql+psycopg2://` for its URL, targeting the same database as the API's
+`DATABASE_URL`. Keep normal URL percent-encoding in `.env`; `alembic/env.py`
+handles the extra escaping required by Alembic's configuration parser.
+
 ```sh
 uv run alembic revision --autogenerate -m "describe schema change"
 uv run alembic upgrade head

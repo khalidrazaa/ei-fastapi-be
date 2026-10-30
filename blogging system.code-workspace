@@ -13,5 +13,83 @@
 			"path": "../ei-ui-nextjs"
 		}
 	],
-	"settings": {}
+	"settings": {},
+	"tasks": {
+		"version": "2.0.0",
+		"presentation": {
+			"reveal": "always",
+			"focus": false,
+			"panel": "dedicated",
+			"showReuseMessage": false
+		},
+		"tasks": [
+			{
+				"label": "FastAPI (8000)",
+				"type": "process",
+				"command": "${workspaceFolder:ei-fastapi-be}/.venv/bin/python",
+				"windows": {
+					"command": "${workspaceFolder:ei-fastapi-be}/.venv/Scripts/python.exe"
+				},
+				"args": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8000"],
+				"options": { "cwd": "${workspaceFolder:ei-fastapi-be}" },
+				"isBackground": true,
+				"problemMatcher": [
+					{
+						"owner": "fastapi-startup",
+						"pattern": {
+							"regexp": "^(.*)\\((\\d+)\\): (.*)$",
+							"file": 1,
+							"line": 2,
+							"message": 3
+						},
+						"background": {
+							"activeOnStart": true,
+							"beginsPattern": ".*Waiting for application startup\\..*",
+							"endsPattern": ".*Application startup complete\\..*"
+						}
+					}
+				],
+				"runOptions": { "runOn": "folderOpen", "instanceLimit": 1 }
+			},
+			{
+				"label": "Content worker",
+				"type": "process",
+				"command": "${workspaceFolder:ei-fastapi-be}/.venv/bin/python",
+				"windows": {
+					"command": "${workspaceFolder:ei-fastapi-be}/.venv/Scripts/python.exe"
+				},
+				"args": ["-m", "app.services.content_worker"],
+				"options": { "cwd": "${workspaceFolder:ei-fastapi-be}" },
+				"problemMatcher": [],
+				"runOptions": { "runOn": "folderOpen", "instanceLimit": 1 }
+			},
+			{
+				"label": "Admin UI (3001)",
+				"type": "shell",
+				"command": "npm",
+				"windows": { "command": "npm.cmd" },
+				"args": ["run", "dev", "--", "--port", "3001"],
+				"options": { "cwd": "${workspaceFolder:ei-admin-ui-nextjs}" },
+				"problemMatcher": [],
+				"runOptions": { "runOn": "folderOpen", "instanceLimit": 1 }
+			},
+			{
+				"label": "Public UI (3000)",
+				"dependsOn": "FastAPI (8000)",
+				"type": "shell",
+				"command": "npm",
+				"windows": { "command": "npm.cmd" },
+				"args": ["run", "dev", "--", "--port", "3000"],
+				"options": { "cwd": "${workspaceFolder:ei-ui-nextjs}" },
+				"problemMatcher": [],
+				"runOptions": { "runOn": "folderOpen", "instanceLimit": 1 }
+			},
+			{
+				"label": "Start all services",
+				"dependsOn": ["FastAPI (8000)", "Content worker", "Admin UI (3001)", "Public UI (3000)"],
+				"dependsOrder": "parallel",
+				"problemMatcher": []
+			}
+		]
+	}
 }
