@@ -9,6 +9,7 @@ from app.schemas.content_workflow import TopicInput, DraftPayload
 from app.services.content_policy import fingerprint, overlaps
 from app.services.content_research_defaults import snapshot_research_settings
 from app.services.content_research_settings import get_settings
+from app.services.content_editorial import editorial_snapshot
 
 class Conflict(ValueError): pass
 
@@ -71,10 +72,35 @@ async def workspace(db, topic_id):
     versions = await q.versions(db, topic_id)
     candidates = [(x.topic_id, x.title, x.reader_question) for x in await q.topics(db) if x.topic_id != topic_id]
     candidates += [(f'article-{x.id}', x.title, '') for x in await q.articles(db) if x.id != item.article_id]
-    return {'topic': topic_view(item, article), 'runs': [row(x) for x in await q.runs(db, topic_id)],
+    diagrams = {}
+    for version in versions:
+        diagrams.update(await diagrams_for_content(db, topic_id, version.payload['content']))
+    return {'topic': topic_view(item, article), 'runs': [row(x) for x in await q.runs(db, topic_id)], 'diagrams': diagrams,
             'versions': [row(x) for x in versions], 'qa': [row(x) for x in await q.reports(db, [v.id for v in versions])],
             'article': row(article) if article else None, 'article_fingerprint': fingerprint(article), 'article_status': article.status if article else None,
             'overlaps': overlaps(item.title, item.reader_question, candidates)}
+
+
+async def diagrams_for_content(db, topic_id, content):
+    from app.services.article_markdown_images import markdown_images
+    from app.services.article_image_validation import validate_svg
+    from app.services.content_diagram import DIAGRAM_NAME
+    result = {}
+    for image in markdown_images(content)[1]:
+        match = DIAGRAM_NAME.fullmatch(image.destination)
+        if not match or image.destination in result:
+            continue
+        run = await q.run(db, match[1])
+        if not run or run.topic_id != topic_id or run.status != 'completed' or run.stage not in {'generate', 'fix'}:
+            raise ValueError('Generated diagram does not belong to this completed topic version.')
+        artifact = (run.result or {}).get('diagram')
+        if not artifact or artifact.get('filename') != image.destination:
+            raise ValueError('Generated diagram is unavailable. Regenerate or remove its reference.')
+        data = artifact.get('svg', '').encode()
+        if len(data) > 1024 * 1024:
+            raise ValueError('Generated diagram is too large.')
+        result[image.destination] = dict(artifact, svg=validate_svg(data, 24_000_000).decode())
+    return result
 
 async def article_workspace(db, article_id):
     item = next((t for t in await q.topics(db) if t.article_id == article_id), None)
@@ -117,6 +143,10 @@ async def start(db, topic_id, payload, actor):
         await get_settings(db) if payload.stage == 'research'
         else snapshot_research_settings(research.inputs)
     )
+    inputs['editorial_policy'] = editorial_snapshot(research.inputs if research else None)
+    inputs['overlaps'] = (await workspace(db, topic_id))['overlaps']
+    if payload.stage in ['qa', 'fix']:
+        inputs['diagram'] = next(iter((await diagrams_for_content(db, topic_id, version.payload['content'])).values()), None)
     job = ContentRun(id=str(uuid4()), topic_id=topic_id, stage=payload.stage, request_key=payload.request_key, inputs=inputs)
     await q.add(db, job)
     await q.audit(db, topic_id, actor, 'run_started', {'run_id': job.id, 'stage': job.stage})
@@ -141,6 +171,9 @@ async def save_version(db, topic_id, payload, actor):
     base = await q.version(db, payload.base_version_id)
     if not base or base.topic_id != topic_id or base.brief_version != item.brief_version:
         raise Conflict('Version does not match the current brief.')
+    # Reject foreign/missing generated artifacts before persisting an immutable
+    # version that the workspace could no longer preview or repair.
+    await diagrams_for_content(db, topic_id, payload.payload.content)
     version = ContentVersion(topic_id=topic_id, research_id=base.research_id, brief_version=item.brief_version, payload=payload.payload.model_dump())
     await q.add(db, version)
     item.version += 1
@@ -167,18 +200,43 @@ async def save_draft(db, topic_id, payload, actor):
     if any(x.slug == data['slug'] and (not article or x.id != article.id) for x in await q.articles(db)):
         raise Conflict('Slug already exists. Edit the workspace slug.')
     fields = {k: data[k] for k in ['title', 'slug', 'content', 'excerpt', 'meta_description', 'tags', 'keywords', 'seo_title', 'category', 'subcategory', 'language', 'schema_type', 'open_graph_title', 'open_graph_description']}
+    from app.services.article_markdown_images import markdown_images, local_image_path
+    diagrams = await diagrams_for_content(db, topic_id, data['content'])
+    for image in markdown_images(data['content'])[1]:
+        if local_image_path(image.destination) and image.destination not in diagrams:
+            raise ValueError('Save requires an available generated SVG or an already uploaded image URL.')
     fields.update(status='draft', host_site=host, category=data['category'] or item.track, drafted_at=now(),
                   canonical_url=f'https://{host}/articles/{data["slug"]}', reading_time=max(1, len(data['content'].split()) // 200))
     if article:
         for key, value in fields.items(): setattr(article, key, value)
     else:
         article = await q.add(db, Article(**fields))
-    item.article_id = article.id
-    item.saved_version_id = version.id
-    item.status = 'Drafted'
-    item.version += 1
-    await q.audit(db, topic_id, actor, 'draft_saved', {'article_id': article.id, 'version_id': version.id})
-    await q.commit(db)
+    created_media = []
+    saved_article_id = article.id
+    try:
+        if diagrams:
+            from app.services.article_media_service import attach_generated_svg, cleanup_generated_svg
+            from app.services.article_markdown_images import rewrite_images
+            text, images = markdown_images(data['content'])
+            urls = {}
+            for name, diagram in diagrams.items():
+                url, path = await attach_generated_svg(db, article.id, name, diagram['svg'])
+                urls[name] = url
+                created_media.append(path)
+            selected_images = [(image, image.destination) for image in images if image.destination in urls]
+            article.content = rewrite_images(text, selected_images, urls)
+        item.article_id = article.id
+        item.saved_version_id = version.id
+        item.status = 'Drafted'
+        item.version += 1
+        await q.audit(db, topic_id, actor, 'draft_saved', {'article_id': article.id, 'version_id': version.id})
+        await q.commit(db)
+    except Exception:
+        await db.rollback()
+        if created_media:
+            from app.services.article_media_service import cleanup_generated_svg
+            await cleanup_generated_svg(db, saved_article_id, created_media)
+        raise
     return {'article_id': article.id, 'topic_id': topic_id}
 
 async def import_csv(db, payload, actor):

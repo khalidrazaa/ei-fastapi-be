@@ -11,6 +11,7 @@ from app.schemas.content_workflow import ResearchPackage
 from app.services.content_ai import ContentAI
 from app.services.content_policy import safe_url
 from app.services.content_research_defaults import RESEARCH_INSTRUCTIONS, research_context
+from app.services.content_editorial import editorial_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class GeminiContentAI(ContentAI):
     async def research(self, inputs):
         response = await self.request(
             json.dumps(research_context(inputs)),
-            {'system_instruction': RESEARCH_INSTRUCTIONS,
+            {'system_instruction': RESEARCH_INSTRUCTIONS + '\nEditorial policy takes precedence over conflicting research preferences:\n' + editorial_instructions(inputs),
              'tools': [{'google_search': {}}], 'max_output_tokens': settings.CONTENT_MAX_OUTPUT_TOKENS},
             'search')
         research_text = self.checked_text(response, 'search')
