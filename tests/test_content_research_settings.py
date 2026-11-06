@@ -508,20 +508,21 @@ class ResearchSettingsProviderTests(unittest.IsolatedAsyncioTestCase):
                 result = await ai.research(inputs)
                 args = call.call_args.kwargs
                 policy = " ".join(RESEARCH_INSTRUCTIONS.lower().split())
-                self.assertIn("official pricing pages", policy)
+                self.assertIn("compare billing against usage", policy)
+                self.assertIn("without vendor rates", policy)
                 self.assertIn("read relevant direct pages", policy)
                 self.assertIn(
                     "community discussions provide experiences and opinions, "
                     "not verified technical facts", policy,
                 )
                 if provider == "openai":
-                    self.assertEqual(args["instructions"], RESEARCH_INSTRUCTIONS)
+                    self.assertTrue(args["instructions"].startswith(RESEARCH_INSTRUCTIONS))
+                    self.assertIn('policy version 2026-11-01', args['instructions'])
                     sent = json.loads(args["input"])
                     self.assertEqual(args["tools"], [{"type": "web_search"}])
                 else:
-                    self.assertEqual(
-                        args["config"]["system_instruction"], RESEARCH_INSTRUCTIONS
-                    )
+                    self.assertTrue(args["config"]["system_instruction"].startswith(RESEARCH_INSTRUCTIONS))
+                    self.assertIn('policy version 2026-11-01', args['config']['system_instruction'])
                     sent = json.loads(args["contents"])
                     self.assertEqual(args["config"]["tools"], [{"google_search": {}}])
                 self.assertEqual(sent["research_settings"], snapshot)

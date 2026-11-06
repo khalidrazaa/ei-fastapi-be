@@ -8,7 +8,8 @@ Research the given data technology topic using credible, up-to-date sources.
 Research Rules:
 1. Select only sources relevant to the topic.
 2. Prioritize official documentation for technical accuracy.
-3. Verify pricing using official pricing pages.
+3. Compare billing units against usage and operating effort. Vendor rates, price
+   comparisons, advertised discounts, and price break-even thresholds are out of scope.
 4. Identify business problems, practical solutions, trade-offs, and limitations.
 5. Cross-check important claims with independent sources.
 6. Do not invent statistics, case studies, or pricing.
@@ -79,8 +80,9 @@ requirement to visit every site. Select only a relevant subset for this topic;
 search beyond the pool when relevant evidence is missing. The brief's source_urls
 are optional topic-specific suggestions, not prerequisites or verified evidence.
 Read relevant direct pages, not only search snippets or source homepages.
-Prioritize official documentation for technical claims and official pricing pages
-for prices; record the product edition, region, currency, date and uncertainty.
+Prioritize official documentation for technical claims; record edition, region,
+checked date, assumptions, and uncertainty. Compare billing against usage, without
+vendor rates, price comparisons, advertised discounts, or break-even thresholds.
 Cross-check important claims with independent sources where available. Vendor
 customer stories are attributed examples, not independent validation. Community
 discussions provide experiences and opinions, not verified technical facts.

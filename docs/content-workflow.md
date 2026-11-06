@@ -4,6 +4,48 @@ Create a topic, save its brief, run research, then generate an article. Generati
 
 Admins can also write directly from **Drafts -> New Draft**. Saving creates a draft through authenticated `POST /v1/admin/articles` with a title, unique slug, and content (which may be empty), plus optional article metadata. New articles always begin as drafts; publishing remains a separate save in the editor. Manual drafts do not require a topic or AI generation.
 
+## Editorial policy and SVG generation
+
+The provider-neutral rules live in `app/editorial/article-workflow.md`. Research jobs
+snapshot the policy text, version, and SHA-256 alongside the research settings;
+generation, fixes, and automatic QA inherit that snapshot. Later policy edits do
+not rewrite existing runs. A legacy run without a policy uses the current bundled
+policy when next processed. Start fresh research to adopt new rules deliberately.
+
+New articles use 400–800 main-body words, excluding H1, image markup and final
+Sources. Main headings, tables and captions count. Sources are assembled from the
+research catalog with checked dates; body URLs and invented citations are flagged
+by QA. Vendor rate comparisons, advertised discounts, and price break-even claims
+are outside scope; billing units against workload and operating effort remain in scope.
+
+For a requested diagram, writing supplies one `diagram.svg` placeholder. A separate
+provider call creates a bounded sequence, stages, or comparison plan. The worker
+renders native SVG, sanitizes it, and runs Chromium paint and text-bounds checks
+with network and page scripts disabled. Rendering failures fail the stage with a
+retryable operator message rather than silently omitting the asset. The plan,
+SVG, and visual-check results stay in the generation run outside DraftPayload.
+Automated QA compares the plan and labels with the prose; semantic correctness
+and real site/mobile appearance still require human review. There is no PNG artifact.
+
+Workspace responses include only diagrams referenced by that topic's versions.
+The admin preview displays sanitized SVG through an image blob, never inline HTML.
+Edited versions can retain a previously generated asset. Save to Drafts stores the
+SVG through the existing article media tables and rewrites the Markdown to its
+immutable media URL. Published articles retain the existing overwrite protections.
+This change adds no database tables or migration, but the existing article-media
+schema must already be installed. Historical Mermaid versions remain viewable;
+regenerate them to obtain the new SVG workflow.
+
+For local workers install the browser once with
+`python -m playwright install chromium --only-shell` (Linux installations may also
+need `--with-deps`). The Dockerfile already installs Chromium and dependencies.
+Configure `MEDIA_ROOT` and `MEDIA_PUBLIC_BASE_URL` as for manual media uploads;
+persist and share MEDIA_ROOT wherever media is served. Draft saving writes the
+files; diagram generation itself stores artifacts in the database, so workers do
+not need a shared local artifact directory. Restart the API and worker, and rebuild
+the admin after deploying these code changes. No paid provider or production job
+is run by the isolated test suite.
+
 ## Setup
 
 1. Fill the required backend settings from [app/core/config.py](../app/core/config.py), including database settings and a provider key: `OPENAI_API_KEY` (or `OPEN_AI_KEY`) for OpenAI, or `GOOGLE_AI_STUDIO_API_KEY` for Gemini. Keep `CONTENT_WORKFLOW_ENABLED=true`.

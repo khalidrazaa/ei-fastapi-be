@@ -68,7 +68,7 @@ class Brief(StrictModel):
     scenario: str = Field(default='', max_length=3000)
     scope: str = Field(min_length=5, max_length=5000)
     exclusions: str = Field(default='', max_length=3000)
-    target_words: int = Field(default=800, ge=400, le=2000)
+    target_words: int = Field(default=800, ge=400, le=800)
     diagram: bool = True
     source_urls: list[str] = Field(default_factory=list, max_length=20)
 

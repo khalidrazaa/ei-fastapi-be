@@ -9,14 +9,19 @@ from app.db.models.content_workflow import ContentRun, ContentVersion, ContentQA
 from app.services.content_ai import ContentAI
 from app.services.content_gemini import GeminiContentAI
 from app.services.content_research_defaults import snapshot_research_settings
+from app.services.content_editorial import editorial_snapshot
+from app.services.content_diagram import generate_diagram
 
 logger = logging.getLogger(__name__)
 
 async def perform(job, ai):
     if job.stage == 'research': return await ai.research(job.inputs)
     if job.stage in ['generate', 'fix']:
-        return {'payload': await ai.write(job.inputs, job.stage == 'fix'), 'usage': ai.usage}
-    return await ai.qa(job.inputs['payload'], job.inputs['research'])
+        payload = await ai.write(job.inputs, job.stage == 'fix')
+        payload, diagram = await generate_diagram(job, ai, payload)
+        return {'payload': payload, 'diagram': diagram, 'usage': ai.usage,
+                'editorial_policy': editorial_snapshot(job.inputs)}
+    return await ai.qa(job.inputs['payload'], job.inputs['research'], job.inputs.get('diagram'), editorial_snapshot(job.inputs))
 
 async def finish(db, job_id, token, result=None, error=None):
     job = await q.run(db, job_id, True)
@@ -44,7 +49,8 @@ async def finish(db, job_id, token, result=None, error=None):
             await db.flush()
             await q.add(db, ContentRun(id=str(uuid4()), topic_id=topic.topic_id, stage='qa',
                 request_key=f'qa-{version.id}', inputs={**job.inputs, 'payload': version.payload, 'version_id': version.id,
-                    'research_settings': snapshot_research_settings(job.inputs)}))
+                    'research_settings': snapshot_research_settings(job.inputs),
+                    'editorial_policy': editorial_snapshot(job.inputs), 'diagram': result.get('diagram')}))
         elif job.stage == 'qa':
             await q.add(db, ContentQA(version_id=job.inputs['version_id'], report=result))
         topic.version += 1
@@ -60,7 +66,7 @@ async def tick():
     try:
         ai = GeminiContentAI() if job.inputs.get('provider', 'openai') == 'gemini' else ContentAI()
         # Less than the ten-minute lease; process crashes are recovered by claim().
-        result = await asyncio.wait_for(perform(job, ai), timeout=480)
+        result = await asyncio.wait_for(perform(job, ai), timeout=540)
     except Exception as exc:
         logger.warning('Content run %s failed (%s)', job.id, type(exc).__name__)
         error = str(exc) if isinstance(exc, ValueError) else f'{type(exc).__name__}: provider or worker unavailable. Check configuration and retry.'

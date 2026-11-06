@@ -217,3 +217,41 @@ async def get_public_image(db, article_id: int, storage_name: str):
     if not path.is_file() or path.is_symlink():
         raise LookupError("Image not found.")
     return path, record.mime_type
+
+
+async def attach_generated_svg(db, article_id, filename, svg):
+    """Attach an immutable worker SVG in the caller's draft-save transaction."""
+    data = svg.encode('utf-8')
+    if len(data) > settings.MEDIA_MAX_IMAGE_BYTES:
+        raise ValueError('Generated SVG exceeds the media size limit.')
+    sanitized = validate_svg(data, settings.MEDIA_MAX_PIXELS)
+    base = _public_base()
+    identifier = uuid4().hex
+    storage_name = identifier + '.svg'
+    destination = media_root() / 'articles' / str(article_id)
+    path = destination / storage_name
+    try:
+        await asyncio.to_thread(destination.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(_write_file, path, sanitized)
+        await image_query.add_image(db, id=str(UUID(identifier)), article_id=article_id,
+            original_article_id=article_id, storage_name=storage_name, original_filename=filename,
+            mime_type='image/svg+xml', byte_size=len(sanitized), sha256=hashlib.sha256(sanitized).hexdigest())
+        await asyncio.to_thread(_sync_directory, destination)
+        await asyncio.to_thread(_sync_directory, destination.parent)
+        await asyncio.to_thread(_sync_directory, destination.parent.parent)
+    except Exception:
+        await asyncio.to_thread(path.unlink, missing_ok=True)
+        raise
+    return f'{base}/media/articles/{article_id}/{storage_name}', path
+
+
+async def cleanup_generated_svg(db, article_id, paths):
+    """Retain media when a failed COMMIT may actually have reached the database."""
+    for path in paths:
+        try:
+            committed = await image_query.get_image(db, article_id, path.name)
+        except Exception:
+            logger.warning('Retaining generated SVG after an uncertain draft commit')
+            return
+        if committed is None:
+            await asyncio.to_thread(path.unlink, missing_ok=True)
